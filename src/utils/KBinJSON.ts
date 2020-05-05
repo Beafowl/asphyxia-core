@@ -1,0 +1,971 @@
+import { Encoding, codeToString, convert, stringToCode } from 'encoding-japanese';
+import xml2json from 'fast-xml-parser';
+import { toSafeInteger, isArrayLike, get, isArray, isEmpty, toString, isNil } from 'lodash';
+import json2xml = xml2json.j2xParser;
+
+import { BinaryLengthType, ReadBuffer, WriteBuffer } from './AutoBuffer';
+
+export type KBinAttrMap = { [key: string]: number | string };
+export type KBinNumberType =
+  | 's8'
+  | 'u8'
+  | 's16'
+  | 'u16'
+  | 's32'
+  | 'u32'
+  | 'time'
+  | 'ip4'
+  | 'float'
+  | 'double'
+  | 'bool';
+export type KBinBigIntType = 's64' | 'u64';
+export type KBinNumberGroupType =
+  | '2s8'
+  | '2u8'
+  | '2s16'
+  | '2u16'
+  | '2s32'
+  | '2u32'
+  | '2f'
+  | '2d'
+  | '3s8'
+  | '3u8'
+  | '3s16'
+  | '3u16'
+  | '3s32'
+  | '3u32'
+  | '3f'
+  | '3d'
+  | '4s8'
+  | '4u8'
+  | '4s16'
+  | '4u16'
+  | '4s32'
+  | '4u32'
+  | '4f'
+  | '4d'
+  | '2b'
+  | '3b'
+  | '4b'
+  | 'vb';
+export type KBinBigIntGroupType =
+  | '2s64'
+  | '2u64'
+  | '3s64'
+  | '3u64'
+  | '4s64'
+  | '4u64'
+  | 'vs8'
+  | 'vu8'
+  | 'vs16'
+  | 'vu16';
+
+export type KBinControlIdentifier = 'invalid' | 'attr' | 'array' | 'void';
+
+export type KBinWriteableType =
+  | 'bin'
+  | 'str'
+  | KBinNumberType
+  | KBinNumberGroupType
+  | KBinBigIntType
+  | KBinBigIntGroupType;
+
+export type KBinAllType =
+  | 'bin'
+  | 'str'
+  | KBinNumberType
+  | KBinNumberGroupType
+  | KBinBigIntType
+  | KBinBigIntGroupType
+  | KBinControlIdentifier;
+
+(BigInt.prototype as any).toJSON = function (this: bigint): string {
+  return this.toString() + 'n';
+};
+
+const SIGNATURE = 0xa0;
+const SIG_COMPRESSED = 0x42;
+const SIG_UNCOMPRESSED = 0x45;
+
+const XML_FORMATS: KBinAllType[] = [
+  'invalid',
+  'void',
+  's8',
+  'u8',
+  's16',
+  'u16',
+  's32',
+  'u32',
+  's64',
+  'u64',
+  'bin',
+  'str',
+  'ip4',
+  'time',
+  'float',
+  'double',
+  '2s8',
+  '2u8',
+  '2s16',
+  '2u16',
+  '2s32',
+  '2u32',
+  '2s64',
+  '2u64',
+  '2f',
+  '2d',
+  '3s8',
+  '3u8',
+  '3s16',
+  '3u16',
+  '3s32',
+  '3u32',
+  '3s64',
+  '3u64',
+  '3f',
+  '3d',
+  '4s8',
+  '4u8',
+  '4s16',
+  '4u16',
+  '4s32',
+  '4u32',
+  '4s64',
+  '4u64',
+  '4f',
+  '4d',
+  'attr',
+  'array',
+  'vs8',
+  'vu8',
+  'vs16',
+  'vu16',
+  'bool',
+  '2b',
+  '3b',
+  '4b',
+  'vb',
+];
+
+function dataSizeOf(str: string): number {
+  if (str[0] === '2') {
+    return 2;
+  } else if (str[0] === '3') {
+    return 3;
+  } else if (str[0] === '4') {
+    return 4;
+  } else if (str === 'vs64' || str === 'vu64' || str === 'vd') {
+    return 2;
+  } else if (str === 'vs32' || str === 'vu32' || str === 'vf') {
+    return 4;
+  } else if (str === 'vs16' || str === 'vu16') {
+    return 8;
+  } else if (str === 'vs8' || str === 'vu8' || str === 'vb') {
+    return 16;
+  }
+  return 1;
+}
+
+const XML_TYPES: { [key: string]: number } = {
+  'void': 1,
+  's8': 2,
+  'u8': 3,
+  's16': 4,
+  'u16': 5,
+  's32': 6,
+  'u32': 7,
+  's64': 8,
+  'u64': 9,
+  'bin': 10,
+  'str': 11,
+  'ip4': 12,
+  'time': 13,
+  'float': 14,
+  'double': 15,
+  '2s8': 16,
+  '2u8': 17,
+  '2s16': 18,
+  '2u16': 19,
+  '2s32': 20,
+  '2u32': 21,
+  '2s64': 22,
+  '2u64': 23,
+  '2f': 24,
+  '2d': 25,
+  '3s8': 26,
+  '3u8': 27,
+  '3s16': 28,
+  '3u16': 29,
+  '3s32': 30,
+  '3u32': 31,
+  '3s64': 32,
+  '3u64': 33,
+  '3f': 34,
+  '3d': 35,
+  '4s8': 36,
+  '4u8': 37,
+  '4s16': 38,
+  '4u16': 39,
+  '4s32': 40,
+  '4u32': 41,
+  '4s64': 42,
+  '4u64': 43,
+  '4f': 44,
+  '4d': 45,
+  'attr': 46,
+  'array': 47,
+  'vs8': 48,
+  'vu8': 49,
+  'vs16': 50,
+  'vu16': 51,
+  'bool': 52,
+  '2b': 53,
+  '3b': 54,
+  '4b': 55,
+  'vb': 56,
+  'binary': 10,
+  'string': 11,
+  'f': 14,
+  'd': 15,
+  'vs64': 22,
+  'vu64': 23,
+  'vs32': 40,
+  'vu32': 41,
+  'vf': 44,
+  'b': 52,
+  'nodeEnd': 190,
+  'endSection': 191,
+  'nodeStart': 1,
+};
+
+const BIN_ENCODING = 'SHIFT_JIS';
+const JOBJ_ENCODING = 'UNICODE';
+
+const CHARMAP = '0123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz';
+const BYTEMAP: { [key: string]: number } = {
+  '0': 0,
+  '1': 1,
+  '2': 2,
+  '3': 3,
+  '4': 4,
+  '5': 5,
+  '6': 6,
+  '7': 7,
+  '8': 8,
+  '9': 9,
+  ':': 10,
+  'A': 11,
+  'B': 12,
+  'C': 13,
+  'D': 14,
+  'E': 15,
+  'F': 16,
+  'G': 17,
+  'H': 18,
+  'I': 19,
+  'J': 20,
+  'K': 21,
+  'L': 22,
+  'M': 23,
+  'N': 24,
+  'O': 25,
+  'P': 26,
+  'Q': 27,
+  'R': 28,
+  'S': 29,
+  'T': 30,
+  'U': 31,
+  'V': 32,
+  'W': 33,
+  'X': 34,
+  'Y': 35,
+  'Z': 36,
+  '_': 37,
+  'a': 38,
+  'b': 39,
+  'c': 40,
+  'd': 41,
+  'e': 42,
+  'f': 43,
+  'g': 44,
+  'h': 45,
+  'i': 46,
+  'j': 47,
+  'k': 48,
+  'l': 49,
+  'm': 50,
+  'n': 51,
+  'o': 52,
+  'p': 53,
+  'q': 54,
+  'r': 55,
+  's': 56,
+  't': 57,
+  'u': 58,
+  'v': 59,
+  'w': 60,
+  'x': 61,
+  'y': 62,
+  'z': 63,
+};
+
+const ENCODING_STRINGS: { [key: number]: KBinEncoding } = {
+  0x00: 'SHIFT_JIS',
+  0x20: 'ASCII',
+  0x40: 'ISO-8859-1',
+  0x60: 'EUC-JP',
+  0x80: 'SHIFT_JIS',
+  0xa0: 'UTF-8',
+};
+
+const ENCODING_VALS: { [key: string]: number } = {
+  'SHIFT_JIS': 0x80,
+  'UTF-8': 0xa0,
+  'EUC-JP': 0x60,
+  'ASCII': 0x20,
+  'ISO-8859-1': 0x40,
+};
+
+const ENC_JP_MAP: { [key: string]: Encoding } = {
+  'SHIFT_JIS': 'SJIS',
+  'UTF-8': 'UTF8',
+  'EUC-JP': 'EUCJP',
+  'ASCII': 'UTF8',
+  'ISO-8859-1': 'UTF8',
+};
+
+export type KBinEncoding = 'SHIFT_JIS' | 'UTF-8' | 'EUC-JP' | 'ASCII' | 'ISO-8859-1';
+
+export function isKBin(input: Buffer): boolean {
+  const firstByte = input.readUInt8(0);
+  const secondByte = input.readUInt8(1);
+  return (
+    firstByte === SIGNATURE && (secondByte === SIG_COMPRESSED || secondByte === SIG_UNCOMPRESSED)
+  );
+}
+
+export function unpackSixbit(byteBuf: ReadBuffer | Buffer): string {
+  if (byteBuf instanceof Buffer) {
+    byteBuf = new ReadBuffer(byteBuf);
+  }
+  const length = Number(byteBuf.get('u8'));
+
+  let value = 0;
+  let valueBits = 0;
+  let result = '';
+  for (let i = 0; i < length; ++i) {
+    if (valueBits < 6) {
+      value = (value << 8) + Number(byteBuf.get('u8'));
+      valueBits += 8;
+    }
+
+    const offset = valueBits - 6;
+    const index = value >> offset;
+    result += CHARMAP[index];
+    valueBits -= 6;
+    value = value - (index << offset);
+  }
+
+  return result;
+}
+
+export function packSixbit(str: string): Buffer {
+  let padding = 8 - ((str.length * 6) % 8);
+  if (padding === 8) {
+    padding = 0;
+  }
+
+  const lengthBytes = Math.floor((str.length * 6 + padding) / 8);
+  const result = Buffer.alloc(lengthBytes + 1);
+
+  let value = 0;
+  let valueBits = 0;
+  let byteIndex = 0;
+
+  result.writeUInt8(str.length, byteIndex);
+  ++byteIndex;
+
+  for (const char of str) {
+    value = (value << 6) + BYTEMAP[char];
+    valueBits += 6;
+
+    if (valueBits >= 8) {
+      valueBits -= 8;
+      const byte = value >> valueBits;
+      value = value - (byte << valueBits);
+      result.writeUInt8(byte, byteIndex);
+      ++byteIndex;
+    }
+  }
+
+  if (valueBits > 0) {
+    result.writeUInt8(value << (8 - valueBits), byteIndex);
+  }
+
+  return result;
+}
+
+function bufferToString(data: Buffer, encoding: string): string {
+  if (data == null) {
+    return '';
+  }
+  const str = codeToString(convert(data, JOBJ_ENCODING, ENC_JP_MAP[encoding]));
+  return str.substr(0, str.length - 1);
+}
+
+function nodeToBinary(
+  node: any,
+  name: string,
+  nodeBuf: WriteBuffer,
+  dataBuf: WriteBuffer,
+  encoding: KBinEncoding,
+  compressed: boolean
+): void {
+  const jpEncoding = ENC_JP_MAP[encoding];
+
+  function appendNodeName(nodeName: string): void {
+    if (compressed) {
+      nodeBuf.writeBytes(packSixbit(nodeName));
+    } else {
+      const enc = convert(nodeName, jpEncoding, JOBJ_ENCODING);
+      nodeBuf.writeBytes(Buffer.from([(enc.length - 1) | 64, ...enc]));
+    }
+  }
+
+  const attrs = node['@attr'];
+
+  let nodeType = attrs !== undefined ? attrs.__type : undefined;
+
+  if (!nodeType) {
+    if (node['@content'] && typeof node['@content'] === 'string') {
+      nodeType = 'str';
+    } else {
+      nodeType = 'void';
+    }
+  }
+
+  const nodeTypeID = XML_TYPES[nodeType];
+
+  const count = attrs !== undefined ? attrs.__count : undefined;
+  const isArray = count === undefined ? 0 : 64;
+
+  nodeBuf.write('u8', nodeTypeID | isArray);
+  appendNodeName(name);
+
+  if (nodeType !== 'void') {
+    const nodeFormat = XML_FORMATS[nodeTypeID];
+    const dataCount = dataSizeOf(nodeFormat);
+    const dataType = dataCount === 1 ? nodeFormat : nodeFormat.substr(1);
+
+    let value = node['@content'];
+
+    if (nodeFormat === 'str') {
+      if (value === null || value === undefined) {
+        value = '';
+      }
+      const dataStr = convert(stringToCode(value as string), jpEncoding, JOBJ_ENCODING).concat([0]);
+      dataBuf.writeStream(Buffer.from(dataStr));
+    } else if (nodeFormat === 'bin') {
+      dataBuf.writeStream(value as Buffer);
+    } else {
+      let binaryType = dataType;
+      if (binaryType === 'ip4' || binaryType === 'time') {
+        binaryType = 'u32';
+      } else if (binaryType === 'float') {
+        binaryType = 'f';
+      } else if (binaryType === 'double') {
+        binaryType = 'd';
+      } else if (binaryType === 'bool' || binaryType === 'b') {
+        binaryType = 'u8';
+      }
+
+      if (isArray) {
+        dataBuf.writeArray(binaryType as BinaryLengthType, value as (number | bigint)[]);
+      } else {
+        dataBuf.writeNumberData(binaryType as BinaryLengthType, value as (number | bigint)[]);
+      }
+    }
+  }
+
+  if (node['@attr']) {
+    const sortedAttrs = Object.entries(node['@attr']).sort();
+    for (const attr of sortedAttrs) {
+      const k = attr[0];
+      let v = attr[1] as any;
+
+      switch (typeof v) {
+        case 'number':
+        case 'bigint':
+        case 'boolean':
+        case 'object':
+          v = v.toString();
+          break;
+        case 'string':
+          break;
+        default:
+          continue;
+      }
+
+      if (k.startsWith('__')) {
+        continue;
+      }
+
+      const dataStr = convert(stringToCode(v), jpEncoding, JOBJ_ENCODING).concat([0]);
+      const vData = Buffer.from(dataStr);
+      dataBuf.writeStream(vData);
+      nodeBuf.write('u8', XML_TYPES.attr);
+      appendNodeName(k);
+    }
+  }
+
+  for (const child in node) {
+    if (child === '@attr' || child === '@content') {
+      continue;
+    }
+    const childNode = node[child];
+    if (Array.isArray(childNode)) {
+      for (const entry of childNode) {
+        nodeToBinary(entry, child, nodeBuf, dataBuf, encoding, compressed);
+      }
+    } else {
+      nodeToBinary(childNode, child, nodeBuf, dataBuf, encoding, compressed);
+    }
+  }
+
+  nodeBuf.write('u8', XML_TYPES.nodeEnd | 64);
+}
+
+export function kencode(
+  data: any,
+  encoding: KBinEncoding = BIN_ENCODING,
+  compressed = true
+): Buffer {
+  const header = Buffer.from([
+    SIGNATURE,
+    compressed ? SIG_COMPRESSED : SIG_UNCOMPRESSED,
+    ENCODING_VALS[encoding],
+    0xff ^ ENCODING_VALS[encoding],
+    0,
+    0,
+    0,
+    0,
+  ]);
+
+  const nodeBuf = new WriteBuffer();
+  const dataBuf = new WriteBuffer();
+
+  const rootKey = Object.keys(data)[0];
+  nodeToBinary(data[rootKey], rootKey, nodeBuf, dataBuf, encoding, compressed);
+
+  nodeBuf.write('u8', XML_TYPES.endSection | 64);
+  nodeBuf.realign();
+
+  header.writeUInt32BE(nodeBuf.length, 4);
+
+  nodeBuf.write('u32', dataBuf.length);
+
+  return Buffer.concat([header, nodeBuf.getBuffer(), dataBuf.getBuffer()]);
+}
+
+export function kdecode(input: Buffer): any {
+  const data = {};
+
+  const nodeStack = [];
+  let curNode: any = data;
+
+  const nodeBuf = new ReadBuffer(input);
+  if (Number(nodeBuf.get('u8')) !== SIGNATURE) {
+    return;
+  }
+
+  const compress = Number(nodeBuf.get('u8'));
+  if (compress !== SIG_COMPRESSED && compress !== SIG_UNCOMPRESSED) {
+    return;
+  }
+
+  const compressed = compress === SIG_COMPRESSED;
+
+  const encodingKey = Number(nodeBuf.get('u8'));
+  if (
+    Number(nodeBuf.get('u8')) !== (0xff ^ encodingKey) ||
+    ENCODING_STRINGS[encodingKey] === undefined
+  ) {
+    return;
+  }
+
+  const encoding = ENCODING_STRINGS[encodingKey];
+
+  const nodeEnd = Number(nodeBuf.get('u32')) + 8;
+
+  const dataBuf = new ReadBuffer(input, nodeEnd);
+  dataBuf.get('u32'); // Skip dataSize
+
+  const hasNodesLeft = true;
+  while (hasNodesLeft && nodeBuf.hasData()) {
+    let nodeType = Number(nodeBuf.get('u8'));
+    if (nodeType === 0) {
+      continue;
+    }
+
+    const isArray = nodeType & 64;
+    nodeType &= ~64;
+
+    const nodeFormat = XML_FORMATS[nodeType];
+
+    let name = '';
+    if (nodeType !== XML_TYPES.nodeEnd && nodeType !== XML_TYPES.endSection) {
+      if (compressed) {
+        name = unpackSixbit(nodeBuf);
+      } else {
+        const length = (Number(nodeBuf.get('u8')) & ~64) + 1;
+        name = bufferToString(nodeBuf.getBytes(length), encoding);
+      }
+    }
+
+    let value = '';
+
+    if (nodeType === XML_TYPES.attr) {
+      const stream = dataBuf.getStream();
+      value = bufferToString(stream, encoding);
+      if (curNode['@attr'] === undefined) {
+        curNode['@attr'] = {};
+      }
+      curNode['@attr'][name] = value;
+
+      continue;
+    } else if (nodeType === XML_TYPES.nodeEnd) {
+      curNode = nodeStack.pop();
+      continue;
+    } else if (nodeType === XML_TYPES.endSection) {
+      break;
+    } else if (nodeFormat === undefined) {
+      break;
+    }
+
+    const parentNode = curNode;
+    nodeStack.push(parentNode);
+
+    curNode = {};
+    if (parentNode[name] !== undefined) {
+      const thisParent = parentNode[name];
+      if (Array.isArray(thisParent)) {
+        const nodeList = thisParent;
+        nodeList.push(curNode);
+      } else {
+        parentNode[name] = [thisParent, curNode];
+      }
+    } else {
+      parentNode[name] = curNode;
+    }
+
+    if (nodeType === XML_TYPES.nodeStart) {
+      continue;
+    }
+
+    if (curNode['@attr'] === undefined) {
+      curNode['@attr'] = {};
+    }
+    curNode['@attr'].__type = nodeFormat;
+
+    const dataCount = dataSizeOf(nodeFormat);
+    const dataType = dataCount === 1 ? nodeFormat : nodeFormat.substr(1);
+
+    if (nodeFormat === 'str') {
+      const stream = dataBuf.getStream();
+      curNode['@content'] = bufferToString(stream, encoding);
+    } else if (nodeFormat === 'bin') {
+      const stream = dataBuf.getStream();
+      curNode['@content'] = stream;
+    } else {
+      let binaryType = dataType;
+      if (binaryType === 'ip4' || binaryType === 'time') {
+        binaryType = 'u32';
+      } else if (binaryType === 'float') {
+        binaryType = 'f';
+      } else if (binaryType === 'double') {
+        binaryType = 'd';
+      } else if (binaryType === 'bool' || binaryType === 'b') {
+        binaryType = 'u8';
+      }
+
+      if (isArray) {
+        curNode['@content'] = dataBuf.getArray(binaryType as BinaryLengthType);
+        curNode['@attr'].__count = Math.floor(curNode['@content'].length / dataCount);
+      } else {
+        curNode['@content'] = dataBuf.getNumberData(binaryType as BinaryLengthType, dataCount);
+      }
+    }
+  }
+
+  return data;
+}
+
+export function int2ip(valve: number): string {
+  return (
+    (valve >>> 24) + '.' + ((valve >> 16) & 255) + '.' + ((valve >> 8) & 255) + '.' + (valve & 255)
+  );
+}
+
+export function ip2int(ip: string): number {
+  const parts = ip.split('.');
+  return (
+    ((toSafeInteger(parts[0]) << 24) >>> 0) +
+    (toSafeInteger(parts[1]) << 16) +
+    (toSafeInteger(parts[2]) << 8) +
+    toSafeInteger(parts[3])
+  );
+}
+
+function transformJObj(obj: any, toStr = true): void {
+  if (obj !== null && obj !== undefined) {
+    const data = obj['@content'];
+    if (data !== undefined) {
+      let vType = 'void';
+      if (obj['@attr'] && obj['@attr'].__type) {
+        vType = obj['@attr'].__type;
+      }
+      if (obj['@attr'] && obj['@attr'].__count) {
+        obj['@attr'].__count = toSafeInteger(obj['@attr'].__count);
+      }
+      if (toStr) {
+        if (typeof data !== 'object') {
+          obj['@content'] = data.toString();
+        } else {
+          if (Buffer.isBuffer(data)) {
+            obj['@content'] = data.toString('hex');
+          } else if (Array.isArray(data)) {
+            if (vType === 'ip4') {
+              obj['@content'] = data.map(v => int2ip(v)).join(' ');
+            } else {
+              obj['@content'] = data.join(' ');
+            }
+          }
+        }
+      } else {
+        if (typeof data === 'string') {
+          if (vType === 'bin') {
+            obj['@content'] = Buffer.from(data, 'hex');
+          } else if (vType === 'ip4') {
+            const parts = data.split(' ');
+            obj['@content'] = parts.map(ip2int);
+          } else if (vType !== 'str') {
+            const parts = data.split(' ');
+            if (vType.endsWith('64')) {
+              obj['@content'] = parts.map(v => BigInt(v));
+            } else {
+              obj['@content'] = parts.map(v => parseFloat(v));
+            }
+          }
+        }
+      }
+    } else {
+      for (const child in obj) {
+        if (typeof obj[child] == 'string' && !toStr) {
+          if (obj[child] === '') {
+            obj[child] = {};
+          } else {
+            obj[child] = {
+              '@attr': {
+                __type: 'str',
+              },
+              '@content': obj[child],
+            };
+          }
+        } else if (child !== '@attr') {
+          transformJObj(obj[child], toStr);
+        }
+      }
+    }
+  }
+}
+
+export function dataToXML(data: any): string {
+  const options = {
+    attributeNamePrefix: '',
+    attrNodeName: '@attr',
+    textNodeName: '@content',
+    ignoreAttributes: false,
+    ignoreNameSpace: false,
+    allowBooleanAttributes: false,
+    parseNodeValue: true,
+    parseAttributeValue: false,
+    format: true,
+    supressEmptyNode: true,
+  };
+
+  transformJObj(data);
+
+  const parser = new json2xml(options);
+  const xml = parser.parse(data);
+
+  transformJObj(data, false);
+
+  return "<?xml version='1.0' encoding='UTF-8'?>\n" + xml;
+}
+
+export function xmlToData(xml: string | Buffer): any {
+  let xmlStr = xml;
+  if (typeof xmlStr !== 'string') {
+    xmlStr = codeToString(convert(xml, 'UNICODE', 'AUTO'));
+  }
+
+  const options = {
+    attributeNamePrefix: '',
+    attrNodeName: '@attr',
+    textNodeName: '@content',
+    ignoreAttributes: false,
+    ignoreNameSpace: false,
+    allowBooleanAttributes: false,
+    parseNodeValue: false,
+    parseAttributeValue: false,
+    trimValues: true,
+  };
+
+  const data = xml2json.parse(xmlStr, options);
+  transformJObj(data, false);
+
+  return data;
+}
+
+export function kitem(type: 'str', content: string, attr?: KBinAttrMap): any;
+export function kitem(type: 'bin', content: Buffer, attr?: KBinAttrMap): any;
+export function kitem(type: 'ip4', content: string, attr?: KBinAttrMap): any;
+export function kitem(type: KBinNumberType, content: number, attr?: KBinAttrMap): any;
+export function kitem(type: KBinBigIntType, content: bigint, attr?: KBinAttrMap): any;
+export function kitem(type: KBinNumberGroupType, content: number[], attr?: KBinAttrMap): any;
+export function kitem(type: KBinBigIntGroupType, content: bigint[], attr?: KBinAttrMap): any;
+export function kitem(
+  type: KBinWriteableType,
+  content: string | number | bigint | object,
+  attr?: KBinAttrMap
+): any {
+  if (!attr) {
+    attr = {};
+  }
+
+  let contentObj = content;
+
+  if (type === 'ip4' && typeof contentObj === 'string') {
+    contentObj = [ip2int(contentObj)];
+  }
+
+  if (typeof contentObj === 'number' || typeof contentObj === 'bigint') {
+    contentObj = [contentObj];
+  }
+
+  const attrObj = {
+    __type: type,
+    ...attr,
+  };
+
+  return {
+    '@attr': attrObj,
+    '@content': contentObj,
+  };
+}
+
+export function kattr(attr: KBinAttrMap) {
+  return {
+    '@attr': attr,
+  };
+}
+
+export function karray(type: 'u8' | 's8', content: Buffer, attr?: KBinAttrMap): any;
+export function karray(type: KBinNumberType, content: number[], attr?: KBinAttrMap): any;
+export function karray(type: KBinBigIntType, content: bigint[], attr?: KBinAttrMap): any;
+export function karray(
+  type: KBinNumberType | KBinBigIntType,
+  content: number[] | bigint[] | Buffer,
+  attr?: KBinAttrMap
+): any {
+  let value = content as any;
+  if (typeof value == 'bigint' || typeof value == 'number') {
+    value = [content] as any;
+  }
+
+  const item = kitem(type as any, value, attr);
+
+  const countObj: any = {};
+  if (isArrayLike(item['@content'])) {
+    const dataSize = dataSizeOf(type);
+    countObj.__count = Math.ceil(item['@content'].length / dataSize);
+  }
+
+  item['@attr'] = {
+    ...item['@attr'],
+    ...countObj,
+  };
+
+  return item;
+}
+
+export function simplify(data: any) {}
+
+export const getFirst = (data: any, path: string, def?: any): any => {
+  return get(data, `${path}.@content.0`, def);
+};
+
+export const getNumber = (data: any, path: string, def?: number): number => {
+  let value = get(data, `${path}.@content`);
+  let result = NaN;
+  if (typeof value == 'string') {
+    result = Number(value);
+  } else {
+    result = Number(get(data, `${path}.@content.0`, def));
+  }
+
+  if (result == NaN) {
+    return def;
+  }
+  return result;
+};
+
+export const getBool = (data: any, path: string): boolean => {
+  return getNumber(data, `${path}.@content.0`, 0) > 0;
+};
+
+export const getBigInt = (data: any, path: string, def?: bigint): bigint => {
+  let value = get(data, `${path}.@content`, def);
+  try {
+    if (typeof value == 'string') {
+      return BigInt(value);
+    }
+    return BigInt(get(data, `${path}.@content.0`, def));
+  } catch (_) {
+    return def;
+  }
+};
+
+export const getContent = (data: any, path: string, def?: any): any => {
+  return get(data, `${path}.@content`, def);
+};
+
+export const getNumbers: (data: any, path: string, def?: number[]) => number[] = getContent;
+export const getBigInts: (data: any, path: string, def?: bigint[]) => bigint[] = getContent;
+export const getStr: (data: any, path: string, def?: string) => string = getContent;
+export const getBuffer: (data: any, path: string, def?: Buffer) => Buffer = getContent;
+
+export const getAttr = (data: any, field: string, def?: string | number): string => {
+  return toString(get(data, `@attr.${field}`, def));
+};
+
+export const getElement = (data: any, path: string): any[] => {
+  const item: any = get(data, `${path}`, {});
+  if (isArray(item)) {
+    return item[0];
+  }
+  return item;
+};
+
+export const getElements = (data: any, path: string): any[] => {
+  const item: any = get(data, `${path}`, []);
+  if (isEmpty(item)) {
+    return [];
+  }
+
+  if (isArray(item)) {
+    return item;
+  } else {
+    return [item];
+  }
+};

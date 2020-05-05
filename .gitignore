@@ -1,0 +1,12 @@
+node_modules/
+
+dist/*
+build/*
+dev/*
+
+build-env/package-lock.json
+build-env/index.js
+
+.vscode
+.vs
+.env

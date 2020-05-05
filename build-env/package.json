@@ -1,0 +1,19 @@
+{
+  "name": "asphyxia-core",
+  "version": "0.0.1",
+  "description": "KONMAI FUN TIME",
+  "main": "./index.js",
+  "scripts": {
+    "start": "node ./index.js"
+  },
+  "bin": {
+    "axphyxia": "./index.js"
+  },
+  "pkg": {
+    "assets": "./node_modules/typescript"
+  },
+  "dependencies": {
+    "ts-node": "^8.10.1",
+    "uglify-js": "^3.9.2"
+  }
+}

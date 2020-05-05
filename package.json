@@ -1,0 +1,33 @@
+{
+  "name": "asphyxia-core",
+  "version": "0.0.1",
+  "description": "KONMAI FUN TIME",
+  "main": "./build/index.js",
+  "devDependencies": {
+    "@types/argparse": "^1.0.38",
+    "@types/ejs": "^3.0.3",
+    "@types/encoding-japanese": "^1.0.15",
+    "@types/express": "^4.17.6",
+    "@types/get-caller-file": "^1.0.0",
+    "@types/lodash": "^4.14.150",
+    "@types/node": "^13.13.4",
+    "@types/pug": "^2.0.4",
+    "prettier": "^2.0.5",
+    "typescript": "^3.8.3"
+  },
+  "dependencies": {
+    "@zeit/ncc": "^0.22.1",
+    "argparse": "^1.0.10",
+    "chalk": "^4.0.0",
+    "ejs": "^3.1.2",
+    "encoding-japanese": "^1.0.30",
+    "express": "^4.17.1",
+    "fast-xml-parser": "^3.16.0",
+    "get-caller-file": "^2.0.5",
+    "lodash": "^4.17.15",
+    "pkg": "^4.4.8",
+    "pug": "^2.0.4",
+    "ts-node": "^8.10.1",
+    "winston": "^3.2.1"
+  }
+}
