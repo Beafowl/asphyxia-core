@@ -1,7 +1,6 @@
 import path from 'path';
 import { render as ejs, renderFile as ejsFile } from 'ejs';
 import { render as pug, renderFile as pugFile } from 'pug';
-import getCallerFile from 'get-caller-file';
 
 import { RequestHandler } from 'express';
 import { findKey, get, has, defaultTo, set } from 'lodash';
@@ -11,8 +10,11 @@ import { KonmaiEncrypt } from '../utils/KonmaiEncrypt';
 import LzKN from '../utils/LzKN';
 import { Logger } from '../utils/Logger';
 import { EamuseSendOption, EamuseModuleContainer } from '../eamuse/EamuseModuleContainer';
+import { GetCallerModule, MODULE_PATH } from '../utils/EamuseIO';
+import { ARGS } from '../utils/ArgParser';
+import { toHiraganaCase } from 'encoding-japanese';
 
-const ACCEPT_AGENTS = ['EAMUSE.XRPC/1.0', 'EAMUSE.Httpac/1.0'];
+// const ACCEPT_AGENTS = ['EAMUSE.XRPC/1.0', 'EAMUSE.Httpac/1.0'];
 
 export interface EABody {
   data: object;
@@ -34,11 +36,18 @@ export const EamuseMiddleware: RequestHandler = async (req, res, next) => {
   res.set('X-Powered-By', 'Asphyxia');
 
   const agent = req.headers['user-agent'];
-  if (ACCEPT_AGENTS.indexOf(agent) < 0) {
-    Logger.debug(`EAM: Unsupported agent: ${agent}`);
-    res.sendStatus(404);
+
+  if (agent.indexOf('Mozilla') >= 0) {
+    // Skip browser
+    res.redirect(`http://${ARGS.ui_bind}:${ARGS.ui_port}`);
     return;
   }
+
+  // if (ACCEPT_AGENTS.indexOf(agent) < 0) {
+  //   Logger.debug(`EAM: Unsupported agent: ${agent}`);
+  //   res.sendStatus(404);
+  //   return;
+  // }
 
   const eamuseInfo = req.headers['x-eamuse-info'];
 
@@ -55,7 +64,7 @@ export const EamuseMiddleware: RequestHandler = async (req, res, next) => {
   });
 
   req.on('end', () => {
-    Logger.debug(req.url);
+    // Logger.debug(req.url);
     const data = Buffer.concat(chunks);
     if (!data) {
       Logger.debug(`EAM: No Data`);
@@ -119,6 +128,11 @@ export const EamuseRoute = (container: EamuseModuleContainer): RequestHandler =>
     const body = req.body as EABody;
 
     const sendObject = async (content: any = {}, options: EamuseSendOption = {}) => {
+      if ((this as any).sent) {
+        return;
+      } else {
+        (this as any).sent = true;
+      }
       const encoding = defaultTo(options.encoding, 'SHIFT_JIS');
       const attr = defaultTo(options.attr, {});
       const status = defaultTo(options.status, 0);
@@ -157,36 +171,80 @@ export const EamuseRoute = (container: EamuseModuleContainer): RequestHandler =>
     };
 
     const sendXml = async (template: string, data?: any, options?: EamuseSendOption) => {
-      return sendObject(xmlToData(ejs(template, data)), options);
+      const mod = GetCallerModule();
+      if (!mod) {
+        Logger.error(`unexpected error: unknown module`);
+        return sendObject({}, { status: 1 });
+      }
+
+      try {
+        const result = xmlToData(ejs(template, data));
+        return sendObject(result, options);
+      } catch (err) {
+        Logger.error(err, { module: mod.name });
+        return sendObject({}, { status: 1 });
+      }
     };
 
     const sendPug = async (template: string, data?: any, options?: EamuseSendOption) => {
-      return sendObject(xmlToData(pug(template, data)), options);
+      const mod = GetCallerModule();
+      if (!mod) {
+        Logger.error(`unexpected error: unknown module`);
+        return sendObject({}, { status: 1 });
+      }
+
+      try {
+        const result = xmlToData(pug(template, data));
+        return sendObject(result, options);
+      } catch (err) {
+        Logger.error(err, { module: mod.name });
+        return sendObject({}, { status: 1 });
+      }
     };
 
     const sendXmlFile = async (template: string, data?: any, options?: EamuseSendOption) => {
-      const caller = getCallerFile();
-      const callerPath = path.dirname(caller);
-      const callerFile = path.basename(caller);
-      if (callerPath.endsWith('modules')) {
-        Logger.error(`[${callerFile}] Cannot render file templates from single-file modules`);
+      const mod = GetCallerModule();
+      if (!mod) {
+        Logger.error(`unexpected error: unknown module`);
         return sendObject({}, { status: 1 });
-      } else {
-        return sendObject(xmlToData(ejsFile(path.join(callerPath, template), data)), options);
+      }
+
+      if (mod.single) {
+        Logger.error(`cannot render file templates from single-file modules`, { module: mod.name });
+        return sendObject({}, { status: 1 });
+      }
+
+      try {
+        const xml = await ejsFile(path.join(MODULE_PATH, mod.name, template), data, {});
+        const result = xmlToData(xml);
+        return sendObject(result, options);
+      } catch (err) {
+        Logger.error(err, { module: mod.name });
+        return sendObject({}, { status: 1 });
       }
     };
 
     const sendPugFile = async (template: string, data?: any, options?: EamuseSendOption) => {
-      const caller = getCallerFile();
-      const callerPath = path.dirname(caller);
-      const callerFile = path.basename(caller);
-      if (callerPath.endsWith('modules')) {
-        Logger.error(`[${callerFile}] Cannot render file templates from single-file modules`);
+      const mod = GetCallerModule();
+      if (!mod) {
+        Logger.error(`unexpected error: unknown module`);
         return sendObject({}, { status: 1 });
-      } else {
-        return sendObject(xmlToData(pugFile(path.join(callerPath, template), data)), options);
+      }
+
+      if (mod.single) {
+        Logger.error(`cannot render file templates from single-file modules`, { module: mod.name });
+        return sendObject({}, { status: 1 });
+      }
+
+      try {
+        const result = xmlToData(pugFile(path.join(MODULE_PATH, mod.name, template), data));
+        return sendObject(result, options);
+      } catch (err) {
+        Logger.error(err, { module: mod.name });
+        return sendObject({}, { status: 1 });
       }
     };
+
     const gameCode = body.model.split(':')[0];
     try {
       await container.run(
@@ -196,6 +254,7 @@ export const EamuseRoute = (container: EamuseModuleContainer): RequestHandler =>
         { module: body.module, method: body.method, model: body.model },
         get(body.data, `call.${body.module}`),
         {
+          sent: false,
           success: options => sendObject(options),
           deny: options => sendObject({}, { ...options, status: 1 }),
           status: (status, options) => sendObject({}, { ...options, status }),
@@ -207,9 +266,7 @@ export const EamuseRoute = (container: EamuseModuleContainer): RequestHandler =>
         }
       );
     } catch (err) {
-      if ((process as any).pkg == null) {
-        throw err;
-      }
+      Logger.error(err);
       await sendObject({}, { status: 1 });
     }
   };

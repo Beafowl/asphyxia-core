@@ -13,12 +13,29 @@ parser.addArgument(['-p', '--port'], {
   defaultValue: 8083,
   type: 'int',
   metavar: 'PORT',
+  dest: 'port',
 });
 
 parser.addArgument(['-b', '--bind'], {
   help: 'Hostname binding. In case you need to access it through LAN. (default: "localhost")',
   defaultValue: 'localhost',
   metavar: 'HOST',
+  dest: 'bind',
+});
+
+parser.addArgument(['-uip', '--webui-port'], {
+  help: 'Set WebUI port. (default: 8084)',
+  defaultValue: 8084,
+  type: 'int',
+  metavar: 'PORT',
+  dest: 'ui_port',
+});
+
+parser.addArgument(['-uib', '--webui-bind'], {
+  help: 'WebUI Hostname binding. (default: "localhost")',
+  defaultValue: 'localhost',
+  metavar: 'HOST',
+  dest: 'ui_bind',
 });
 
 parser.addArgument(['-m', '--matching-port'], {
@@ -27,6 +44,12 @@ parser.addArgument(['-m', '--matching-port'], {
   type: 'int',
   dest: 'mport',
   metavar: 'PORT',
+});
+
+parser.addArgument(['-s', '--save-path'], {
+  help: 'Set custom savedata directory',
+  dest: 'save_path',
+  metavar: 'PATH',
 });
 
 parser.addArgument(['--console'], {

@@ -10,7 +10,10 @@
     "axphyxia": "./index.js"
   },
   "pkg": {
-    "assets": "./node_modules/typescript"
+    "assets": [
+      "./node_modules/typescript",
+      "./assets"
+    ]
   },
   "dependencies": {
     "ts-node": "^8.10.1",

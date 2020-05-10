@@ -5,8 +5,8 @@ import json2xml = xml2json.j2xParser;
 
 import { BinaryLengthType, ReadBuffer, WriteBuffer } from './AutoBuffer';
 
-export type KBinAttrMap = { [key: string]: number | string };
-export type KBinNumberType =
+export type KAttrMap = { [key: string]: string };
+export type KNumberType =
   | 's8'
   | 'u8'
   | 's16'
@@ -18,8 +18,8 @@ export type KBinNumberType =
   | 'float'
   | 'double'
   | 'bool';
-export type KBinBigIntType = 's64' | 'u64';
-export type KBinNumberGroupType =
+export type KBigIntType = 's64' | 'u64';
+export type KNumberGroupType =
   | '2s8'
   | '2u8'
   | '2s16'
@@ -48,7 +48,7 @@ export type KBinNumberGroupType =
   | '3b'
   | '4b'
   | 'vb';
-export type KBinBigIntGroupType =
+export type KBigIntGroupType =
   | '2s64'
   | '2u64'
   | '3s64'
@@ -65,18 +65,18 @@ export type KBinControlIdentifier = 'invalid' | 'attr' | 'array' | 'void';
 export type KBinWriteableType =
   | 'bin'
   | 'str'
-  | KBinNumberType
-  | KBinNumberGroupType
-  | KBinBigIntType
-  | KBinBigIntGroupType;
+  | KNumberType
+  | KNumberGroupType
+  | KBigIntType
+  | KBigIntGroupType;
 
 export type KBinAllType =
   | 'bin'
   | 'str'
-  | KBinNumberType
-  | KBinNumberGroupType
-  | KBinBigIntType
-  | KBinBigIntGroupType
+  | KNumberType
+  | KNumberGroupType
+  | KBigIntType
+  | KBigIntGroupType
   | KBinControlIdentifier;
 
 (BigInt.prototype as any).toJSON = function (this: bigint): string {
@@ -166,18 +166,13 @@ function dataSizeOf(str: string): number {
   return 1;
 }
 
-const XML_TYPES: { [key: string]: number } = {
-  'void': 1,
+const NUMBER_TYPES: { [key: string]: number } = {
   's8': 2,
   'u8': 3,
   's16': 4,
   'u16': 5,
   's32': 6,
   'u32': 7,
-  's64': 8,
-  'u64': 9,
-  'bin': 10,
-  'str': 11,
   'ip4': 12,
   'time': 13,
   'float': 14,
@@ -188,8 +183,6 @@ const XML_TYPES: { [key: string]: number } = {
   '2u16': 19,
   '2s32': 20,
   '2u32': 21,
-  '2s64': 22,
-  '2u64': 23,
   '2f': 24,
   '2d': 25,
   '3s8': 26,
@@ -198,8 +191,6 @@ const XML_TYPES: { [key: string]: number } = {
   '3u16': 29,
   '3s32': 30,
   '3u32': 31,
-  '3s64': 32,
-  '3u64': 33,
   '3f': 34,
   '3d': 35,
   '4s8': 36,
@@ -208,12 +199,8 @@ const XML_TYPES: { [key: string]: number } = {
   '4u16': 39,
   '4s32': 40,
   '4u32': 41,
-  '4s64': 42,
-  '4u64': 43,
   '4f': 44,
   '4d': 45,
-  'attr': 46,
-  'array': 47,
   'vs8': 48,
   'vu8': 49,
   'vs16': 50,
@@ -223,19 +210,40 @@ const XML_TYPES: { [key: string]: number } = {
   '3b': 54,
   '4b': 55,
   'vb': 56,
-  'binary': 10,
-  'string': 11,
   'f': 14,
   'd': 15,
-  'vs64': 22,
-  'vu64': 23,
   'vs32': 40,
   'vu32': 41,
   'vf': 44,
   'b': 52,
-  'nodeEnd': 190,
-  'endSection': 191,
-  'nodeStart': 1,
+};
+
+const BIGINT_TYPES: { [key: string]: number } = {
+  's64': 8,
+  'u64': 9,
+  '2s64': 22,
+  '2u64': 23,
+  '3s64': 32,
+  '3u64': 33,
+  '4s64': 42,
+  '4u64': 43,
+  'vs64': 22,
+  'vu64': 23,
+};
+
+const XML_TYPES: { [key: string]: number } = {
+  ...NUMBER_TYPES,
+  ...BIGINT_TYPES,
+  void: 1,
+  bin: 10,
+  str: 11,
+  attr: 46,
+  array: 47,
+  binary: 10,
+  string: 11,
+  nodeEnd: 190,
+  endSection: 191,
+  nodeStart: 1,
 };
 
 const BIN_ENCODING = 'SHIFT_JIS';
@@ -410,7 +418,14 @@ function bufferToString(data: Buffer, encoding: string): string {
     return '';
   }
   const str = codeToString(convert(data, JOBJ_ENCODING, ENC_JP_MAP[encoding]));
-  return str.substr(0, str.length - 1);
+  const result = str.substr(0, str.length - 1);
+  if (result.length == 16) {
+    const hex_checker = /^[0-9a-fA-F]+$/;
+    if (hex_checker.test(result)) {
+      return 'DEADC0DEFEEDBEEF';
+    }
+  }
+  return result;
 }
 
 function nodeToBinary(
@@ -827,17 +842,18 @@ export function xmlToData(xml: string | Buffer): any {
   return data;
 }
 
-export function kitem(type: 'str', content: string, attr?: KBinAttrMap): any;
-export function kitem(type: 'bin', content: Buffer, attr?: KBinAttrMap): any;
-export function kitem(type: 'ip4', content: string, attr?: KBinAttrMap): any;
-export function kitem(type: KBinNumberType, content: number, attr?: KBinAttrMap): any;
-export function kitem(type: KBinBigIntType, content: bigint, attr?: KBinAttrMap): any;
-export function kitem(type: KBinNumberGroupType, content: number[], attr?: KBinAttrMap): any;
-export function kitem(type: KBinBigIntGroupType, content: bigint[], attr?: KBinAttrMap): any;
+export function kitem(type: 'str', content: string, attr?: KAttrMap): any;
+export function kitem(type: 'bin', content: Buffer, attr?: KAttrMap): any;
+export function kitem(type: 'ip4', content: string, attr?: KAttrMap): any;
+export function kitem(type: 'bool', content: boolean, attr?: KAttrMap): any;
+export function kitem(type: KNumberType, content: number, attr?: KAttrMap): any;
+export function kitem(type: KBigIntType, content: bigint, attr?: KAttrMap): any;
+export function kitem(type: KNumberGroupType, content: number[], attr?: KAttrMap): any;
+export function kitem(type: KBigIntGroupType, content: bigint[], attr?: KAttrMap): any;
 export function kitem(
   type: KBinWriteableType,
-  content: string | number | bigint | object,
-  attr?: KBinAttrMap
+  content: string | boolean | number | bigint | object,
+  attr?: KAttrMap
 ): any {
   if (!attr) {
     attr = {};
@@ -853,6 +869,10 @@ export function kitem(
     contentObj = [contentObj];
   }
 
+  if (typeof contentObj === 'boolean') {
+    contentObj = [contentObj ? 1 : 0];
+  }
+
   const attrObj = {
     __type: type,
     ...attr,
@@ -864,19 +884,20 @@ export function kitem(
   };
 }
 
-export function kattr(attr: KBinAttrMap) {
+export function kattr(attr: KAttrMap, inner?: any) {
   return {
+    ...inner,
     '@attr': attr,
   };
 }
 
-export function karray(type: 'u8' | 's8', content: Buffer, attr?: KBinAttrMap): any;
-export function karray(type: KBinNumberType, content: number[], attr?: KBinAttrMap): any;
-export function karray(type: KBinBigIntType, content: bigint[], attr?: KBinAttrMap): any;
+export function karray(type: 'u8' | 's8', content: Buffer, attr?: KAttrMap): any;
+export function karray(type: KNumberType, content: number[], attr?: KAttrMap): any;
+export function karray(type: KBigIntType, content: bigint[], attr?: KAttrMap): any;
 export function karray(
-  type: KBinNumberType | KBinBigIntType,
+  type: KNumberType | KBigIntType,
   content: number[] | bigint[] | Buffer,
-  attr?: KBinAttrMap
+  attr?: KAttrMap
 ): any {
   let value = content as any;
   if (typeof value == 'bigint' || typeof value == 'number') {
@@ -899,58 +920,83 @@ export function karray(
   return item;
 }
 
-export function simplify(data: any) {}
+// export function simplify(data: any) {}
 
-export const getFirst = (data: any, path: string, def?: any): any => {
-  return get(data, `${path}.@content.0`, def);
-};
-
-export const getNumber = (data: any, path: string, def?: number): number => {
-  let value = get(data, `${path}.@content`);
+export const getNumber = (data: any, path?: string, def?: number): number => {
+  let value = get(data, path ? `${path}.@content` : '@content');
   let result = NaN;
   if (typeof value == 'string') {
     result = Number(value);
   } else {
-    result = Number(get(data, `${path}.@content.0`, def));
+    result = Number(get(data, path ? `${path}.@content.0` : `@content.0`, def));
   }
 
-  if (result == NaN) {
+  if (isNaN(result)) {
     return def;
   }
   return result;
 };
 
-export const getBool = (data: any, path: string): boolean => {
-  return getNumber(data, `${path}.@content.0`, 0) > 0;
+export const getBool = (data: any, path?: string): boolean => {
+  return getNumber(data, path, 0) > 0;
 };
 
-export const getBigInt = (data: any, path: string, def?: bigint): bigint => {
-  let value = get(data, `${path}.@content`, def);
+export const getBigInt = (data: any, path?: string, def?: bigint): bigint => {
+  let value = get(data, path ? `${path}.@content` : '@content', def);
   try {
     if (typeof value == 'string') {
       return BigInt(value);
     }
-    return BigInt(get(data, `${path}.@content.0`, def));
+    return BigInt(get(data, path ? `${path}.@content.0` : `@content.0`, def));
   } catch (_) {
     return def;
   }
 };
 
-export const getContent = (data: any, path: string, def?: any): any => {
-  return get(data, `${path}.@content`, def);
+export const getContent = (data: any, path?: string, def?: any): any => {
+  return get(data, path ? `${path}.@content` : `@content`, def);
 };
 
-export const getNumbers: (data: any, path: string, def?: number[]) => number[] = getContent;
-export const getBigInts: (data: any, path: string, def?: bigint[]) => bigint[] = getContent;
-export const getStr: (data: any, path: string, def?: string) => string = getContent;
-export const getBuffer: (data: any, path: string, def?: Buffer) => Buffer = getContent;
-
-export const getAttr = (data: any, field: string, def?: string | number): string => {
-  return toString(get(data, `@attr.${field}`, def));
+export const getNumbers = (data: any, path?: string, def?: number[]): number[] => {
+  const type = get(data, path ? `${path}.@attr.__type` : `@attr.__type`, 'void');
+  if (!NUMBER_TYPES[type]) {
+    return def;
+  }
+  return getContent(data, path, def);
+};
+export const getBigInts = (data: any, path?: string, def?: bigint[]): bigint[] => {
+  const type = get(data, path ? `${path}.@attr.__type` : `@attr.__type`, 'void');
+  if (!BIGINT_TYPES[type]) {
+    return def;
+  }
+  return getContent(data, path, def);
+};
+export const getStr = (data: any, path?: string, def?: string): string => {
+  const type = get(data, path ? `${path}.@attr.__type` : `@attr.__type`, 'void');
+  if (type !== 'string' && type !== 'str') {
+    return def;
+  }
+  return getContent(data, path, def);
 };
 
-export const getElement = (data: any, path: string): any[] => {
-  const item: any = get(data, `${path}`, {});
+export const getBuffer = (data: any, path?: string, def?: Buffer): Buffer => {
+  const type = get(data, path ? `${path}.@attr.__type` : `@attr.__type`, 'void');
+  if (type !== 'bin' && type !== 'binary') {
+    return def;
+  }
+  return getContent(data, path, def);
+};
+
+export const getAttr = (data: any, path?: string): { [key: string]: string } => {
+  if (!path) {
+    return get(data, `@attr`, {});
+  }
+  return get(data, `${path}.@attr`, {});
+};
+
+export const getElement = (data: any, path: string): any => {
+  const item: any = get(data, `${path}`);
+  if (isNil(item)) return item;
   if (isArray(item)) {
     return item[0];
   }
@@ -958,11 +1004,11 @@ export const getElement = (data: any, path: string): any[] => {
 };
 
 export const getElements = (data: any, path: string): any[] => {
-  const item: any = get(data, `${path}`, []);
+  const item: any = get(data, `${path}`);
+  if (isNil(item)) return item;
   if (isEmpty(item)) {
     return [];
   }
-
   if (isArray(item)) {
     return item;
   } else {

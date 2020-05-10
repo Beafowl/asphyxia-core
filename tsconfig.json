@@ -9,6 +9,8 @@
     "noImplicitAny": true,
     "moduleResolution": "node",
     "sourceMap": true,
+    "declaration": true,
+    "declarationDir": "typings",
     "outDir": "dist"
   },
   "include": ["src/**/*"],

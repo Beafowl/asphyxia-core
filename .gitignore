@@ -3,9 +3,12 @@ node_modules/
 dist/*
 build/*
 dev/*
+typings/*
 
-build-env/package-lock.json
-build-env/index.js
+build-env/*
+!build-env/assets/
+!build-env/typescript/
+!build-env/package.json
 
 .vscode
 .vs

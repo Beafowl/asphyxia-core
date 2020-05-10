@@ -30,7 +30,7 @@ export const services = (url: string, modules: EamuseModuleContainer) => {
   ];
 
   /* General Information */
-  routeEamuse.use(EamuseMiddleware).all('/', EamuseRoute(rootEA));
+  routeEamuse.use(EamuseMiddleware).all('*', EamuseRoute(rootEA));
 
   /* - Service */
   rootEA.add('*', 'services.get', async (info, data, send) => {

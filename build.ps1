@@ -17,7 +17,7 @@ npx ncc build .\dist\AsphyxiaCore.js -o .\build-env --external uglify-js --exter
 
 # Packing
 Write-Output "Packing exe"
-npx pkg .\build-env -t "node12-win-x64,node12-win-x86" -o .\build\asphyxia-core
+npx pkg .\build-env -t "node12-win-x64,node12-win-x86,node12-linux-x64" -o .\build\asphyxia-core
 
 # Renaming 64bit versions
 # Move-Item -Path ".\build\asphyxia-x64.exe" -Destination ".\build\asphyxia.exe" -Force | Out-Null

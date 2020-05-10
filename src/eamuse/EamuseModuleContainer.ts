@@ -1,16 +1,19 @@
 import { isNil } from 'lodash';
 
-import { KBinEncoding } from '../utils/KBinJSON';
+import { KBinEncoding, KAttrMap } from '../utils/KBinJSON';
 import { EamuseInfo } from '../middlewares/EamuseMiddleware';
+import { GetCallerModule } from '../utils/EamuseIO';
+import { Logger } from '../utils/Logger';
 
 export interface EamuseSendOption {
   status?: number;
   encoding?: KBinEncoding;
   rootName?: string;
-  attr?: any;
+  attr?: KAttrMap;
 }
 
 export interface EamuseSend {
+  sent: boolean;
   success: (options?: EamuseSendOption) => Promise<void>;
   deny: (options?: EamuseSendOption) => Promise<void>;
   status: (code: number, options?: EamuseSendOption) => Promise<void>;
@@ -21,15 +24,20 @@ export interface EamuseSend {
   pugFile: (file: string, data?: any, options?: EamuseSendOption) => Promise<void>;
 }
 
-export type EamuseModuleRoute = (req: EamuseInfo, data: any, send: EamuseSend) => Promise<any>;
+export type EamuseModuleRoute = (info: EamuseInfo, data: any, send: EamuseSend) => Promise<any>;
 
 export class EamuseModuleContainer {
   private modules: {
     [key: string]: boolean | EamuseModuleRoute;
   };
 
+  private fallback: {
+    [key: string]: EamuseModuleRoute;
+  };
+
   constructor() {
     this.modules = {};
+    this.fallback = {};
   }
 
   public add(gameCode: string, method: string): void;
@@ -54,6 +62,19 @@ export class EamuseModuleContainer {
 
     if (gameCode instanceof EamuseModuleContainer) {
       this.modules = { ...this.modules, ...gameCode.modules };
+      this.fallback = { ...this.fallback, ...gameCode.fallback };
+    }
+  }
+
+  public unhandled(gameCode: string, handler?: EamuseModuleRoute) {
+    const mod = GetCallerModule();
+    if (typeof handler === 'function') {
+      this.fallback[gameCode] = handler;
+    } else {
+      this.fallback[gameCode] = async (info, data, send) => {
+        Logger.warn(`unhandled method ${info.module}.${info.method}`, { module: mod.name });
+        send.deny();
+      };
     }
   }
 
@@ -68,18 +89,22 @@ export class EamuseModuleContainer {
     let handler = this.modules[`${moduleName}.${method}`];
     if (isNil(handler)) handler = this.modules[`${gameCode}:${moduleName}.${method}`];
     if (isNil(handler)) {
-      return await send.deny();
+      if (this.fallback[gameCode]) {
+        return this.fallback[gameCode](info, data, send);
+      } else {
+        return send.deny();
+      }
     }
 
     if (typeof handler === 'boolean') {
       if (handler) {
-        return await send.success();
+        return send.success();
       } else {
-        return await send.deny();
+        return send.deny();
       }
     }
 
-    await handler(info, data, send);
+    handler(info, data, send);
     return;
   }
 }

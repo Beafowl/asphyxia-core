@@ -7,6 +7,10 @@ const ProfileCheck: {
   [key: string]: () => boolean;
 } = {};
 
+export function AddProfileCheck(gameCode: string, handler: () => boolean) {
+  if (!ProfileCheck[gameCode]) ProfileCheck[gameCode] = handler;
+}
+
 cardmng.add('*', 'cardmng.inquire', async (info, data, send) => {
   const model: string = info.model;
   const modelCode = model.split(':')[0] || 'NUL';
@@ -35,6 +39,5 @@ cardmng.add('*', 'cardmng.authpass', async (info, data, send) => {
 });
 
 cardmng.add('*', 'cardmng.bindmodel', async (info, data, send) => {
-  const dataID: string = getAttr(data, 'refid', 'DEADC0DEFEEDBEEF');
-  await send.object({ '@attr': { dataid: dataID } });
+  await send.object({ '@attr': { dataid: 'DEADC0DEFEEDBEEF' } });
 });
