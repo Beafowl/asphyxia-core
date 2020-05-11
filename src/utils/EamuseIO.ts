@@ -76,7 +76,7 @@ export function ReadPlayerSave(refid: string, file: string): any {
   }
 
   const dir = PrepareSaveDirectory(mod.name, profile);
-  const fullFile = path.join(dir, profile, `${file}.json`);
+  const fullFile = path.join(dir, `${file}.json`);
   try {
     if (!existsSync(fullFile)) {
       return null;
@@ -153,7 +153,7 @@ export function WritePlayerSave(refid: string, file: string, data: any, formated
   }
 
   const dir = PrepareSaveDirectory(mod.name, profile);
-  const fullFile = path.join(dir, profile, `${file}.json`);
+  const fullFile = path.join(dir, `${file}.json`);
   try {
     if (formated) {
       writeFileSync(fullFile, JSON.stringify(data, null, 4));

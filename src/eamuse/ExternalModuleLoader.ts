@@ -17,7 +17,15 @@ import {
 import { Logger } from '../utils/Logger';
 import { ARGS } from '../utils/ArgParser';
 import { KDataReader } from '../utils/KDataReader';
-import { ReadSave, MODULE_PATH, WriteSave, WriteFile, GetCallerModule } from '../utils/EamuseIO';
+import {
+  ReadSave,
+  MODULE_PATH,
+  WriteSave,
+  WriteFile,
+  GetCallerModule,
+  ReadPlayerSave,
+  WritePlayerSave,
+} from '../utils/EamuseIO';
 import { readdirSync, existsSync } from 'fs';
 import { AddProfileCheck } from './Core/CardManager';
 
@@ -76,6 +84,8 @@ $.IO = {
   ReadSave,
   WriteSave,
   WriteFile,
+  ReadPlayerSave,
+  WritePlayerSave,
 };
 
 if (!ARGS.dev) {
