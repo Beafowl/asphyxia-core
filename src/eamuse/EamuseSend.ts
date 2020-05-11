@@ -174,14 +174,14 @@ export class EamuseSend {
     }
   }
   success(options?: EamuseSendOption) {
-    this.object({}, { ...options, status: 0 });
+    return this.object({}, { ...options, status: 0 });
   }
 
   deny(options?: EamuseSendOption) {
-    this.object({}, { ...options, status: 1 });
+    return this.object({}, { ...options, status: 1 });
   }
 
   status(code: number, options?: EamuseSendOption) {
-    this.object({}, { ...options, status: code });
+    return this.object({}, { ...options, status: code });
   }
 }

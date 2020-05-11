@@ -23,20 +23,20 @@ parser.addArgument(['-b', '--bind'], {
   dest: 'bind',
 });
 
-parser.addArgument(['-uip', '--webui-port'], {
-  help: 'Set WebUI port. (default: 8084)',
-  defaultValue: 8084,
-  type: 'int',
-  metavar: 'PORT',
-  dest: 'ui_port',
-});
+// parser.addArgument(['-uip', '--webui-port'], {
+//   help: 'Set WebUI port. (default: 8084)',
+//   defaultValue: 8084,
+//   type: 'int',
+//   metavar: 'PORT',
+//   dest: 'ui_port',
+// });
 
-parser.addArgument(['-uib', '--webui-bind'], {
-  help: 'WebUI Hostname binding. (default: "localhost")',
-  defaultValue: 'localhost',
-  metavar: 'HOST',
-  dest: 'ui_bind',
-});
+// parser.addArgument(['-uib', '--webui-bind'], {
+//   help: 'WebUI Hostname binding. (default: "localhost")',
+//   defaultValue: 'localhost',
+//   metavar: 'HOST',
+//   dest: 'ui_bind',
+// });
 
 parser.addArgument(['-m', '--matching-port'], {
   help: 'Set matching port. (default: 5700)',

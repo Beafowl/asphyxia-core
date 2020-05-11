@@ -138,7 +138,7 @@ export const EamuseRoute = (container: EamuseModuleContainer): RequestHandler =>
 
     const send = new EamuseSend(body, res);
     try {
-      await container.run(
+      container.run(
         gameCode,
         body.module,
         body.method,

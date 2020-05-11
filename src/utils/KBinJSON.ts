@@ -4,6 +4,7 @@ import { toSafeInteger, isArrayLike, get, isArray, isEmpty, toString, isNil } fr
 import json2xml = xml2json.j2xParser;
 
 import { BinaryLengthType, ReadBuffer, WriteBuffer } from './AutoBuffer';
+import { SAFEHEX } from './Consts';
 
 export type KAttrMap = { [key: string]: string };
 export type KNumberType =
@@ -422,6 +423,8 @@ function bufferToString(data: Buffer, encoding: string): string {
   }
   const str = codeToString(convert(data, JOBJ_ENCODING, ENC_JP_MAP[encoding]));
   const result = str.substr(0, str.length - 1);
+  if (result.startsWith(SAFEHEX)) return result;
+
   if (result.length == 16) {
     const hex_checker = /^[0-9a-fA-F]+$/;
     if (hex_checker.test(result)) {

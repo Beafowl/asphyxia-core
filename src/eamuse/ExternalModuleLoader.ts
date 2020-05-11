@@ -118,6 +118,7 @@ export function LoadExternalModules() {
   try {
     const modules = readdirSync(MODULE_PATH);
     for (const mod of modules) {
+      const name = path.basename(mod);
       const modulePath = path.resolve(MODULE_PATH, mod);
       const moduleExt = path.extname(modulePath);
 
@@ -136,9 +137,9 @@ export function LoadExternalModules() {
           instance = instance.default;
         }
 
-        loadedModules.push({ name: path.basename(mod), instance });
+        loadedModules.push({ name, instance });
       } catch (err) {
-        Logger.error(`failed to load`, { module: mod });
+        Logger.error(`failed to load`, { module: name });
         Logger.error(err);
       }
     }

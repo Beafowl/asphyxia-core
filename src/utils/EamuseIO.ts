@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { Logger } from './Logger';
 import path from 'path';
 import { ARGS } from './ArgParser';
+import { padStart } from 'lodash';
+import { getProfileFromRef } from '../eamuse/Core/CardManager';
 
 export const EXEC_PATH = (process as any).pkg ? path.dirname(process.argv0) : process.cwd();
 export const MODULE_PATH = path.join(EXEC_PATH, 'modules');
@@ -42,22 +44,53 @@ export function GetCallerModule(): { name: string; single: boolean } {
   return null;
 }
 
-export function ExistsFile(file: string): boolean {
-  try {
-    return existsSync(`${file}.json`);
-  } catch (err) {
-    return false;
-  }
-}
+// export function ExistsFile(file: string, ref?: string): boolean {
+//   try {
+//     return existsSync(`${file}.json`);
+//   } catch (err) {
+//     return false;
+//   }
+// }
 
-export function PrepareSaveDirectory(mod: string): string {
-  const dir = path.join(SAVE_PATH, mod);
+export function PrepareSaveDirectory(mod: string, profileDir: string = ''): string {
+  const dir = path.join(SAVE_PATH, mod, profileDir);
 
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
 
   return dir;
+}
+
+export function ReadPlayerSave(refid: string, file: string): any {
+  const mod = GetCallerModule();
+  if (!mod) {
+    Logger.error(`unknown module:`);
+    Logger.error(new Error().stack);
+  }
+
+  const profile = getProfileFromRef(refid);
+  if (!profile) {
+    Logger.warn(`invalid refid. aborted reading`, { module: mod.name });
+    return null;
+  }
+
+  const dir = PrepareSaveDirectory(mod.name, profile);
+  const fullFile = path.join(dir, profile, `${file}.json`);
+  try {
+    if (!existsSync(fullFile)) {
+      return null;
+    }
+    const data = JSON.parse(
+      readFileSync(fullFile, {
+        encoding: 'UTF-8',
+      })
+    );
+    return data;
+  } catch (err) {
+    Logger.error(err);
+    return null;
+  }
 }
 
 export function ReadSave(file: string): any {
@@ -101,6 +134,33 @@ export function WriteSave(file: string, data: any, formated = false) {
       writeFileSync(fullFile, JSON.stringify(data));
     }
     Logger.info(`${file}.json saved`, { module: mod.name });
+  } catch (err) {
+    Logger.error(`file writing failed: ${err}`, { module: mod.name });
+  }
+}
+
+export function WritePlayerSave(refid: string, file: string, data: any, formated = false) {
+  const mod = GetCallerModule();
+  if (!mod) {
+    Logger.error(`unknown module:`);
+    Logger.error(new Error().stack);
+  }
+
+  const profile = getProfileFromRef(refid);
+  if (!profile) {
+    Logger.warn(`invalid refid. aborted saving`, { module: mod.name });
+    return;
+  }
+
+  const dir = PrepareSaveDirectory(mod.name, profile);
+  const fullFile = path.join(dir, profile, `${file}.json`);
+  try {
+    if (formated) {
+      writeFileSync(fullFile, JSON.stringify(data, null, 4));
+    } else {
+      writeFileSync(fullFile, JSON.stringify(data));
+    }
+    Logger.info(`${profile}/${file}.json saved`, { module: mod.name });
   } catch (err) {
     Logger.error(`file writing failed: ${err}`, { module: mod.name });
   }

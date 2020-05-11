@@ -1,1 +1,2 @@
-export const VERSION = 'v1.02 beta';
+export const VERSION = 'v1.03 beta';
+export const SAFEHEX = 'ADEBEEFA';

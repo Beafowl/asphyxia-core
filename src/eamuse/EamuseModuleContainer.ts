@@ -45,8 +45,6 @@ export class EamuseModuleContainer {
     }
 
     if (gameCode instanceof EamuseModuleContainer) {
-      // this.modules = { ...this.modules, ...gameCode.modules };
-      // this.fallback = { ...this.fallback, ...gameCode.fallback };
       this.children.push(gameCode);
     }
   }
@@ -71,33 +69,52 @@ export class EamuseModuleContainer {
     delete this.fallback[`${gameCode}`];
   }
 
-  public async run(
+  public clear() {
+    delete this.modules;
+    delete this.fallback;
+    delete this.children;
+    this.modules = {};
+    this.fallback = {};
+    this.children = [];
+  }
+
+  public run(
     gameCode: string,
     moduleName: string,
     method: string,
     info: EamuseInfo,
     data: any,
-    send: EamuseSend
-  ): Promise<void> {
+    send: EamuseSend,
+    root: boolean = true
+  ): boolean {
     let handler = this.modules[`${moduleName}.${method}`];
     if (isNil(handler)) handler = this.modules[`${gameCode}:${moduleName}.${method}`];
+
     if (isNil(handler)) {
       if (this.fallback[gameCode]) {
-        return this.fallback[gameCode](info, data, send);
+        this.fallback[gameCode](info, data, send);
+        return true;
       } else {
-        return send.deny();
+        for (const child of this.children) {
+          if (child.run(gameCode, moduleName, method, info, data, send, false)) return true;
+        }
+
+        if (root) send.deny();
+        return false;
       }
     }
 
     if (typeof handler === 'boolean') {
       if (handler) {
-        return send.success();
+        send.success();
+        return true;
       } else {
-        return send.deny();
+        send.deny();
+        return true;
       }
     }
 
     handler(info, data, send);
-    return;
+    return true;
   }
 }
