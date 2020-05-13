@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { EamuseMiddleware, EamuseRoute } from '../middlewares/EamuseMiddleware';
 import { core } from './Core';
 import { EamuseModuleContainer } from './EamuseModuleContainer';
+import { dataToXML } from '../utils/KBinJSON';
 
 export const services = (url: string, modules: EamuseModuleContainer) => {
   const routeEamuse = Router();
@@ -27,6 +28,8 @@ export const services = (url: string, modules: EamuseModuleContainer) => {
     'lobby2',
     'dlstatus',
     'netlog',
+    'sidmgr',
+    'globby',
   ];
 
   /* General Information */
@@ -59,6 +62,27 @@ export const services = (url: string, modules: EamuseModuleContainer) => {
     for (const moduleName of coreModules) {
       services.item.push({ '@attr': { name: moduleName, url } });
     }
+
+    // <response>
+    //   <services>
+    //     <item name="pcbtracker" url="http://192.168.1.57:60079/+" />
+    //     <item name="posevent" url="http://192.168.1.57:60079/+" />
+    //     <item name="pcbevent" url="http://192.168.1.57:60079/+" />
+    //     <item name="message" url="http://192.168.1.57:60079/+" />
+    //     <item name="facility" url="http://192.168.1.57:60079/+" />
+    //     <item name="userdata" url="http://192.168.1.57:60079/+" />
+    //     <item name="userid" url="http://192.168.1.57:60079/+" />
+    //     <item name="cardmng" url="http://192.168.1.57:60079/+" />
+    //     <item name="sidmgr" url="http://192.168.1.57:60079/+" />
+    //     <item name="local" url="http://192.168.1.57:60079/+" />
+    //     <item name="ntp" url="http://192.168.1.57:60079/+" />
+    //     <item name="globby" url="http://192.168.1.57:5730/+" />
+    //     <item
+    //       name="keepalive"
+    //       url="http://192.168.1.57:60079/+&amp;ga=192.168.1.57:60079&amp;ma=192.168.1.57:60079&amp;pa=192.168.1.57:60079&amp;ia=192.168.1.57:60079&amp;t1=1&amp;t2=5"
+    //     />
+    //   </services>
+    // </response>;
 
     await send.object(services);
     return;

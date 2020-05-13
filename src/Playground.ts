@@ -1,26 +1,16 @@
-import { xmlToData, dataToXML, kencode, kitem } from './utils/KBinJSON';
-import ejs from 'ejs';
-import pug from 'pug';
+import { xmlToData, dataToXML, kencode, kitem, kdecode } from './utils/KBinJSON';
+import { KonmaiEncrypt } from './utils/KonmaiEncrypt';
+import iconv from 'iconv-lite';
+import { writeFileSync, readFileSync, write } from 'fs';
 
-const data = {
-  attr: 0,
-  text: 'text',
-};
+// const data = readFileSync('response.bin');
+// const decode = kdecode(data);
+// console.log(dataToXML(decode));
 
-const xmlData = {
-  root: { '@attr': { test: data.attr }, 'test': kitem('str', data.text) },
-};
-const ejsData = xmlToData(
-  ejs.render('<root test="<%= attr %>"><test><%= text %></test></root>', data)
+const request = iconv.encode(
+  '<call model="GLD:J:A:A:2007072301" srcid="01201000000E7AC029BE">\n<services method="get"/>\n</call>',
+  'utf8'
 );
-const pugData = xmlToData(pug.render('root(test=attr)\n    test #{text}', data));
 
-console.log(JSON.stringify(xmlData, null, 4));
-console.log(JSON.stringify(ejsData, null, 4));
-console.log(JSON.stringify(pugData, null, 4));
-
-console.log(kencode(xmlData).compare(kencode(ejsData)));
-console.log(kencode(xmlData).compare(kencode(pugData)));
-console.log(kencode(xmlData));
-console.log(kencode(ejsData));
-console.log(kencode(pugData));
+const key = new KonmaiEncrypt('1-5ebc47ba-9868');
+writeFileSync(`${key.getPublicKey()}.bin`, key.encrypt(request));

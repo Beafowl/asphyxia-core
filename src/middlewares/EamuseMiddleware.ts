@@ -1,5 +1,5 @@
 import { RequestHandler } from 'express';
-import { findKey, get, has } from 'lodash';
+import { findKey, get, has, isArray } from 'lodash';
 
 import {
   isKBin,
@@ -14,6 +14,7 @@ import LzKN from '../utils/LzKN';
 import { Logger } from '../utils/Logger';
 import { EamuseModuleContainer } from '../eamuse/EamuseModuleContainer';
 import { EamuseSend } from '../eamuse/EamuseSend';
+import { dataToXML } from '../utils/KBinJSON';
 
 // const ACCEPT_AGENTS = ['EAMUSE.XRPC/1.0', 'EAMUSE.Httpac/1.0'];
 
@@ -118,16 +119,26 @@ export const EamuseMiddleware: RequestHandler = async (req, res, next) => {
       return;
     }
 
-    const eaModule = findKey(get(xml, 'call'), x => has(x, '@attr.method'));
-    const eaMethod = get(xml, `call.${eaModule}.@attr.method`);
-    const model = get(xml, 'call.@attr.model');
+    const eaModule = findKey(
+      get(xml, 'call'),
+      x => has(x, '@attr.method') || has(x, '0.@attr.method')
+    );
 
-    if (!eaModule || !eaMethod) {
+    if (!eaModule) {
       res.sendStatus(404);
       return;
     }
 
-    Logger.debug(`${eaModule}.${eaMethod}`);
+    let moduleObj: any[] = get(xml, `call.${eaModule}`, null);
+    if (!isArray(moduleObj)) moduleObj = [moduleObj];
+
+    const eaMethods: string[] = moduleObj.map(x => get(x, `@attr.method`));
+    const eaMethod = eaMethods.join('.');
+    const model = get(xml, 'call.@attr.model');
+
+    if (!(process as any).pkg) {
+      Logger.debug(`${eaModule}.${eaMethod}\n${dataToXML(xml, false)}`);
+    }
 
     req.body = {
       data: xml,

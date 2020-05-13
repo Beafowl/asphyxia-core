@@ -436,15 +436,18 @@ function bufferToString(data: Buffer, encoding: KBinEncoding): string {
   }
   const str = iconv.decode(data, encoding);
   const result = str.substr(0, str.length - 1);
-  if (result.startsWith(SAFEHEX)) return result;
 
-  if (result.length == 16) {
-    const hex_checker = /^[0-9a-fA-F]+$/;
-    if (hex_checker.test(result)) {
-      return 'DEADC0DEFEEDBEEF';
-    }
-  }
+  // if (result.startsWith(SAFEHEX)) return result;
+
+  // if (result.length == 16) {
+  //   const hex_checker = /^[0-9a-fA-F]+$/;
+  //   if (hex_checker.test(result)) {
+  //     return 'DEADC0DEFEEDBEEF';
+  //   }
+  // }
+
   return result;
+  // replace(/(^|\s*)[0|E][A-F|a-f|0-9]{15}($|\s+)/g, '$1DEADC0DEFEEDBEEF$2');
 }
 
 function nodeToBinary(
@@ -764,9 +767,40 @@ export function ip2int(ip: string): number {
   );
 }
 
+function escape(data: string | number): string {
+  return data
+    .toString()
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function unescape(data: string | number): string {
+  return data
+    .toString()
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
 function transformJObj(obj: any, toStr = true): void {
   if (obj !== null && obj !== undefined) {
     const data = obj['@content'];
+
+    if (obj['@attr']) {
+      for (const attr in obj['@attr']) {
+        if (toStr) {
+          obj['@attr'][attr] = escape(obj['@attr'][attr]);
+        } else {
+          obj['@attr'][attr] = unescape(obj['@attr'][attr]);
+        }
+      }
+    }
+
     if (data !== undefined) {
       let vType = 'void';
       if (obj['@attr'] && obj['@attr'].__type) {
@@ -776,7 +810,9 @@ function transformJObj(obj: any, toStr = true): void {
         obj['@attr'].__count = toSafeInteger(obj['@attr'].__count);
       }
       if (toStr) {
-        if (typeof data !== 'object') {
+        if (typeof data == 'string') {
+          obj['@content'] = escape(data);
+        } else if (typeof data !== 'object') {
           obj['@content'] = data.toString();
         } else {
           if (Buffer.isBuffer(data)) {
@@ -796,13 +832,15 @@ function transformJObj(obj: any, toStr = true): void {
           } else if (vType === 'ip4') {
             const parts = data.split(' ');
             obj['@content'] = parts.map(ip2int);
-          } else if (vType !== 'str') {
+          } else if (vType !== 'str' && vType !== 'void') {
             const parts = data.split(' ');
             if (vType.endsWith('64')) {
               obj['@content'] = parts.map(v => BigInt(v));
             } else {
               obj['@content'] = parts.map(v => parseFloat(v));
             }
+          } else {
+            obj['@content'] = unescape(data);
           }
         }
       }
@@ -827,7 +865,7 @@ function transformJObj(obj: any, toStr = true): void {
   }
 }
 
-export function dataToXML(data: any): string | Buffer {
+export function dataToXML(data: any, header: boolean = true): string {
   const options = {
     attributeNamePrefix: '',
     attrNodeName: '@attr',
@@ -848,7 +886,8 @@ export function dataToXML(data: any): string | Buffer {
 
   transformJObj(data, false);
 
-  return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml;
+  if (header) return "<?xml version='1.0' encoding='UTF-8'?>\n" + xml;
+  else return xml;
 }
 
 export function dataToXMLBuffer(data: any, encoding: KBinEncoding): Buffer {
@@ -877,7 +916,7 @@ export function dataToXMLBuffer(data: any, encoding: KBinEncoding): Buffer {
 export function detectXMLEncoding(xml: Buffer): KBinEncoding {
   const header = iconv.decode(xml.subarray(0, Math.min(128, xml.length)), 'ascii');
   const match = header.match(/<\?xml.*encoding=['|"](.*)['|"].*?>/);
-  if (match.length < 2) {
+  if (!match || match.length < 2) {
     return 'utf8';
   }
   const encoding = XML2ICONV[match[1].toLowerCase()];

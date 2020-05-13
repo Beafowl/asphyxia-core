@@ -4,6 +4,7 @@ import { facility } from './Facility';
 import { pcbtracker } from './PCBTracker';
 import { kitem } from '../../utils/KBinJSON';
 import { EamuseModuleContainer } from '../EamuseModuleContainer';
+import { Logger } from '../../utils/Logger';
 
 export const core = new EamuseModuleContainer();
 
@@ -27,6 +28,19 @@ core.add('*', 'tax.get_phase', async (info, data, send) => {
   await send.object({
     phase: kitem('s32', 0),
   });
+});
+
+core.add('*', 'dlstatus.progress', async (info, data, send) => {
+  await send.success();
+});
+
+core.add('*', 'posevent.income.sales.sale', async (info, data, send) => {
+  Logger.debug(JSON.stringify(data, null, 4));
+  await send.object([
+    { '@attr': { status: 0 } },
+    { '@attr': { status: 0 } },
+    { '@attr': { status: 0 } },
+  ]);
 });
 
 core.add(eacoin);
