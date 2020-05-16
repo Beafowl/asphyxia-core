@@ -3,10 +3,10 @@ import { eacoin } from './EamuseCoin';
 import { facility } from './Facility';
 import { pcbtracker } from './PCBTracker';
 import { kitem } from '../../utils/KBinJSON';
-import { EamuseModuleContainer } from '../EamuseModuleContainer';
+import { EamusePluginContainer } from '../EamusePluginContainer';
 import { Logger } from '../../utils/Logger';
 
-export const core = new EamuseModuleContainer();
+export const core = new EamusePluginContainer();
 
 core.add('*', 'message.get', async (info, data, send) => {
   await send.object({

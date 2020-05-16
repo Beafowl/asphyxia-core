@@ -1,9 +1,9 @@
-import { EamuseModuleContainer } from '../EamuseModuleContainer';
+import { EamusePluginContainer } from '../EamusePluginContainer';
 import { padStart, get, toSafeInteger, toString } from 'lodash';
 import { Logger } from '../../utils/Logger';
 import { SAFEHEX } from '../../utils/Consts';
 
-export const cardmng = new EamuseModuleContainer();
+export const cardmng = new EamusePluginContainer();
 
 const ProfileCheck: {
   [key: string]: () => boolean;

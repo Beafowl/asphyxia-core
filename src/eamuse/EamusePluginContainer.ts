@@ -1,36 +1,36 @@
 import { isNil } from 'lodash';
 
 import { EamuseInfo } from '../middlewares/EamuseMiddleware';
-import { GetCallerModule } from '../utils/EamuseIO';
+import { GetCallerPlugin } from '../utils/EamuseIO';
 import { Logger } from '../utils/Logger';
 import { EamuseSend } from './EamuseSend';
 
-export type EamuseModuleRoute = (info: EamuseInfo, data: any, send: EamuseSend) => Promise<any>;
+export type EamusePluginRoute = (info: EamuseInfo, data: any, send: EamuseSend) => Promise<any>;
 
-export class EamuseModuleContainer {
-  private modules: {
-    [key: string]: boolean | EamuseModuleRoute;
+export class EamusePluginContainer {
+  private plugins: {
+    [key: string]: boolean | EamusePluginRoute;
   };
 
   private fallback: {
-    [key: string]: EamuseModuleRoute;
+    [key: string]: EamusePluginRoute;
   };
 
-  private children: EamuseModuleContainer[];
+  private children: EamusePluginContainer[];
 
   constructor() {
-    this.modules = {};
+    this.plugins = {};
     this.fallback = {};
     this.children = [];
   }
 
   public add(gameCode: string, method: string): void;
-  public add(gameCode: string, method: string, handler: EamuseModuleRoute | boolean): void;
-  public add(gameCode: EamuseModuleContainer): void;
+  public add(gameCode: string, method: string, handler: EamusePluginRoute | boolean): void;
+  public add(gameCode: EamusePluginContainer): void;
   public add(
-    gameCode: string | EamuseModuleContainer,
+    gameCode: string | EamusePluginContainer,
     method?: string,
-    handler?: EamuseModuleRoute | boolean
+    handler?: EamusePluginRoute | boolean
   ): void {
     if (typeof gameCode === 'string' && method !== null && typeof method === 'string') {
       let key = `${gameCode}:${method}`;
@@ -38,31 +38,31 @@ export class EamuseModuleContainer {
         key = `${method}`;
       }
       if (handler) {
-        this.modules[key] = handler;
+        this.plugins[key] = handler;
       } else {
-        this.modules[key] = false;
+        this.plugins[key] = false;
       }
     }
 
-    if (gameCode instanceof EamuseModuleContainer) {
+    if (gameCode instanceof EamusePluginContainer) {
       this.children.push(gameCode);
     }
   }
 
-  public unhandled(gameCode: string, handler?: EamuseModuleRoute) {
-    const mod = GetCallerModule();
+  public unhandled(gameCode: string, handler?: EamusePluginRoute) {
+    const plugin = GetCallerPlugin();
     if (typeof handler === 'function') {
       this.fallback[gameCode] = handler;
     } else {
       this.fallback[gameCode] = async (info, data, send) => {
-        Logger.warn(`unhandled method ${info.module}.${info.method}`, { module: mod.name });
+        Logger.warn(`unhandled method ${info.module}.${info.method}`, { plugin: plugin.name });
         send.deny();
       };
     }
   }
 
   public removeHandler(gameCode: string, method: string) {
-    delete this.modules[`${gameCode}:${method}`];
+    delete this.plugins[`${gameCode}:${method}`];
   }
 
   public removeUnhandled(gameCode: string) {
@@ -70,10 +70,10 @@ export class EamuseModuleContainer {
   }
 
   public clear() {
-    delete this.modules;
+    delete this.plugins;
     delete this.fallback;
     delete this.children;
-    this.modules = {};
+    this.plugins = {};
     this.fallback = {};
     this.children = [];
   }
@@ -87,8 +87,8 @@ export class EamuseModuleContainer {
     send: EamuseSend,
     root: boolean = true
   ): boolean {
-    let handler = this.modules[`${moduleName}.${method}`];
-    if (isNil(handler)) handler = this.modules[`${gameCode}:${moduleName}.${method}`];
+    let handler = this.plugins[`${moduleName}.${method}`];
+    if (isNil(handler)) handler = this.plugins[`${gameCode}:${moduleName}.${method}`];
 
     if (isNil(handler)) {
       if (this.fallback[gameCode]) {

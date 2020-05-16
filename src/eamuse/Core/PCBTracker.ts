@@ -1,6 +1,6 @@
-import { EamuseModuleContainer } from '../EamuseModuleContainer';
+import { EamusePluginContainer } from '../EamusePluginContainer';
 
-export const pcbtracker = new EamuseModuleContainer();
+export const pcbtracker = new EamusePluginContainer();
 
 pcbtracker.add('*', 'pcbtracker.alive', async (info, data, send) => {
   const result = {

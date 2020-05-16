@@ -1,12 +1,12 @@
 import { ip2int, kitem } from '../../utils/KBinJSON';
 import { VERSION } from '../../utils/Consts';
-import { ARGS } from '../../utils/ArgParser';
-import { EamuseModuleContainer } from '../EamuseModuleContainer';
+import { EamusePluginContainer } from '../EamusePluginContainer';
+import { CONFIG } from '../../utils/ArgConfig';
 
-export const facility = new EamuseModuleContainer();
+export const facility = new EamusePluginContainer();
 
 facility.add('*', 'facility.get', async (info, data, send) => {
-  const port = ARGS.mport;
+  const port = CONFIG.matching_port;
 
   const result = {
     location: {

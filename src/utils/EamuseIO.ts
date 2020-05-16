@@ -2,39 +2,43 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
 import { Logger } from './Logger';
 import path from 'path';
-import { ARGS } from './ArgParser';
-import { getProfileFromRef } from '../eamuse/Core/CardManager';
+import nedb from 'nedb';
 
-export const EXEC_PATH = (process as any).pkg ? path.dirname(process.argv0) : process.cwd();
-export const MODULE_PATH = path.join(EXEC_PATH, 'modules');
-export const SAVE_PATH = ARGS.save_path || path.join(EXEC_PATH, 'savedata');
+const pkg: boolean = (process as any).pkg;
+export const EXEC_PATH = pkg ? path.dirname(process.argv0) : process.cwd();
+export const PLUGIN_PATH = path.join(EXEC_PATH, 'plugins');
+export const SAVE_PATH = path.join(EXEC_PATH, 'savedata');
+export const ASSETS_PATH = path.join(pkg ? __dirname : `../../build-env`, 'assets');
+export const CONFIG_PATH = path.join(EXEC_PATH, 'config.ini');
 
-export function GetCallerModule(): { name: string; single: boolean } {
+export const DB = new nedb({ filename: path.join(SAVE_PATH, 'core.db'), autoload: true });
+
+export function GetCallerPlugin(): { name: string; single: boolean } {
   const oldPrepareStackTrace = Error.prepareStackTrace;
   Error.prepareStackTrace = (_, stack) => stack;
   const stack = new Error().stack as any;
   Error.prepareStackTrace = oldPrepareStackTrace;
   if (stack !== null && typeof stack === 'object') {
-    let inModule = false;
+    let inPlugin = false;
     let entryFile = null;
     for (const file of stack) {
       const filename: string = file.getFileName();
-      if (filename.startsWith(MODULE_PATH)) {
-        entryFile = path.relative(MODULE_PATH, filename);
-        inModule = true;
+      if (filename.startsWith(PLUGIN_PATH)) {
+        entryFile = path.relative(PLUGIN_PATH, filename);
+        inPlugin = true;
       } else {
-        if (inModule) {
+        if (inPlugin) {
           break;
         }
       }
     }
 
     if (entryFile !== null) {
-      const mod = entryFile.split(path.sep)[0];
-      if (mod.endsWith('.js') || mod.endsWith('.ts')) {
-        return { name: mod.substr(0, mod.length - 3), single: true };
+      const plugin = entryFile.split(path.sep)[0];
+      if (plugin.endsWith('.js') || plugin.endsWith('.ts')) {
+        return { name: plugin.substr(0, plugin.length - 3), single: true };
       } else {
-        return { name: mod, single: false };
+        return { name: plugin, single: false };
       }
     } else {
       return null;
@@ -43,17 +47,7 @@ export function GetCallerModule(): { name: string; single: boolean } {
   return null;
 }
 
-// export function ExistsFile(file: string, ref?: string): boolean {
-//   try {
-//     return existsSync(`${file}.json`);
-//   } catch (err) {
-//     return false;
-//   }
-// }
-
-export function PrepareSaveDirectory(mod: string, profileDir: string = ''): string {
-  const dir = path.join(SAVE_PATH, mod, profileDir);
-
+export function PrepareDirectory(dir: string = ''): string {
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
@@ -61,177 +55,32 @@ export function PrepareSaveDirectory(mod: string, profileDir: string = ''): stri
   return dir;
 }
 
-export function ReadPlayerSave(refid: string, file: string): any {
-  const mod = GetCallerModule();
-  if (!mod) {
-    Logger.error(`unknown module:`);
-    Logger.error(new Error().stack);
-  }
-
-  const profile = getProfileFromRef(refid);
-  if (!profile) {
-    Logger.warn(`invalid refid. aborted reading`, { module: mod.name });
-    return null;
-  }
-
-  const dir = PrepareSaveDirectory(mod.name, profile);
-  const fullFile = path.join(dir, `${file}.json`);
-  try {
-    if (!existsSync(fullFile)) {
-      return null;
-    }
-    const data = JSON.parse(
-      readFileSync(fullFile, {
-        encoding: 'UTF-8',
-      })
-    );
-    return data;
-  } catch (err) {
-    Logger.error(err);
-    return null;
-  }
-}
-
-export function ReadSave(file: string): any {
-  const mod = GetCallerModule();
-  if (!mod) {
-    Logger.error(`unknown module:`);
-    Logger.error(new Error().stack);
-  }
-
-  const dir = PrepareSaveDirectory(mod.name);
-  const fullFile = path.join(dir, `${file}.json`);
-  try {
-    if (!existsSync(fullFile)) {
-      return null;
-    }
-    const data = JSON.parse(
-      readFileSync(fullFile, {
-        encoding: 'UTF-8',
-      })
-    );
-    return data;
-  } catch (err) {
-    Logger.error(err);
-    return null;
-  }
-}
-
-export function WriteSave(file: string, data: any, formated = false) {
-  const mod = GetCallerModule();
-  if (!mod) {
-    Logger.error(`unknown module:`);
-    Logger.error(new Error().stack);
-  }
-
-  const dir = PrepareSaveDirectory(mod.name);
-  const fullFile = path.join(dir, `${file}.json`);
-  try {
-    if (formated) {
-      writeFileSync(fullFile, JSON.stringify(data, null, 4));
-    } else {
-      writeFileSync(fullFile, JSON.stringify(data));
-    }
-    Logger.info(`${file}.json saved`, { module: mod.name });
-  } catch (err) {
-    Logger.error(`file writing failed: ${err}`, { module: mod.name });
-  }
-}
-
-export function WritePlayerSave(refid: string, file: string, data: any, formated = false) {
-  const mod = GetCallerModule();
-  if (!mod) {
-    Logger.error(`unknown module:`);
-    Logger.error(new Error().stack);
-  }
-
-  const profile = getProfileFromRef(refid);
-  if (!profile) {
-    Logger.warn(`invalid refid. aborted saving`, { module: mod.name });
-    return;
-  }
-
-  const dir = PrepareSaveDirectory(mod.name, profile);
-  const fullFile = path.join(dir, `${file}.json`);
-  try {
-    if (formated) {
-      writeFileSync(fullFile, JSON.stringify(data, null, 4));
-    } else {
-      writeFileSync(fullFile, JSON.stringify(data));
-    }
-    Logger.info(`${profile}/${file}.json saved`, { module: mod.name });
-  } catch (err) {
-    Logger.error(`file writing failed: ${err}`, { module: mod.name });
-  }
-}
-
-// export function WriteDebugFile(file: string, data: any) {
-//   if (process.env.ASPHYXIA_PRINT_LOG !== 'print') return;
-//   try {
-//     let output = JSON.stringify(data, null, 2);
-//     const kitemReplace = /\{\s*\n\s*['"]@attr['"]: \{\s*\n\s*['"]?__type['"]?: ['"](.*)['"],?\s*\n\s*\},\s*\n\s*['"]@content['"]: \[\s*\n*\s*(.*)\s*\n*\s*\],?\s*\n\s*\}/g;
-//     const strReplace = /\{\s*\n\s*['"]@attr['"]: \{\s*\n\s*['"]?__type['"]?: ['"](str)['"],?\s*\n\s*\},\s*\n\s*['"]@content['"]: (['"].*['"]),?\s*\n\s*\}/g;
-//     const karrayReplace = /\{\s*\n\s*['"]@attr['"]: \{\s*\n\s*['"]?__type['"]?: ['"](.*)['"],\s*\n\s*['"]?__count['"]?: .*\s*\n\s*\},?\s*\n\s*['"]@content['"]: (\[(?:[^\]]|\n)*\]),?\s*\n\s*\}/g;
-
-//     output = output.replace(kitemReplace, "kitem('$1', $2)");
-//     output = output.replace(strReplace, "kitem('$1', $2)");
-//     output = output.replace(karrayReplace, "karray('$1', $2)");
-//     writeFileSync(`${file}.js`, `const debug = ${output};`);
-//     Logger.debug(`Debug File ${file}.js Saved`);
-//   } catch (err) {
-//     Logger.debug(`Debug File ${file}.js Saving Failed`);
-//   }
-// }
-
-// export function ReadXML(file: string): any {
-//   try {
-//     if (!existsSync(`${file}.xml`)) {
-//       return null;
-//     }
-//     const data = xmlToData(readFileSync(`${file}.xml`));
-//     return data;
-//   } catch (err) {
-//     Logger.error(err);
-//     return false;
-//   }
-// }
-
 export function WriteFile(file: string, data: string) {
-  const mod = GetCallerModule();
-  if (!mod) return;
+  const plugin = GetCallerPlugin();
+  if (!plugin) return;
 
   let target = file;
   if (!path.isAbsolute(file)) {
-    target = path.resolve(MODULE_PATH, mod.name, file);
+    target = path.resolve(PLUGIN_PATH, plugin.name, file);
   }
 
   try {
+    PrepareDirectory(path.dirname(target));
     writeFileSync(target, data);
   } catch (err) {
-    Logger.error(`file writing failed: ${err}`, { module: mod });
+    Logger.error(`file writing failed: ${err}`, { plugin: plugin.name });
   }
 }
 
-// export function PrintXML(data: any) {
-//   try {
-//     Logger.info(dataToXML(data));
-//   } catch (err) {
-//     Logger.error(err);
-//   }
-// }
-
 export function ReadAssets(file: string): any {
-  let fullFile = path.join(__dirname, 'assets', `${file}`);
-  if (!(process as any).pkg) {
-    fullFile = path.join('../../build-env/assets', `${file}`);
-  }
+  let fullFile = path.join(ASSETS_PATH, `${file}`);
 
   try {
     if (!existsSync(fullFile)) {
       return null;
     }
     const data = readFileSync(fullFile, {
-      encoding: 'UTF-8',
+      encoding: 'utf-8',
     });
     return data;
   } catch (err) {

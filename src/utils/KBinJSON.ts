@@ -436,18 +436,7 @@ function bufferToString(data: Buffer, encoding: KBinEncoding): string {
   }
   const str = iconv.decode(data, encoding);
   const result = str.substr(0, str.length - 1);
-
-  // if (result.startsWith(SAFEHEX)) return result;
-
-  // if (result.length == 16) {
-  //   const hex_checker = /^[0-9a-fA-F]+$/;
-  //   if (hex_checker.test(result)) {
-  //     return 'DEADC0DEFEEDBEEF';
-  //   }
-  // }
-
   return result;
-  // replace(/(^|\s*)[0|E][A-F|a-f|0-9]{15}($|\s+)/g, '$1DEADC0DEFEEDBEEF$2');
 }
 
 function nodeToBinary(
@@ -787,82 +776,84 @@ function unescape(data: string | number): string {
     .replace(/&gt;/g, '>');
 }
 
-function transformJObj(obj: any, toStr = true): void {
-  if (obj !== null && obj !== undefined) {
-    const data = obj['@content'];
+function stringed(data: any): any {
+  if (typeof data !== 'object') return undefined;
 
-    if (obj['@attr']) {
-      for (const attr in obj['@attr']) {
-        if (toStr) {
-          obj['@attr'][attr] = escape(obj['@attr'][attr]);
-        } else {
-          obj['@attr'][attr] = unescape(obj['@attr'][attr]);
-        }
-      }
+  let result: any = {};
+  if (Array.isArray(data)) {
+    result = [];
+    for (const element of data) {
+      result.push(stringed(element));
     }
-
-    if (data !== undefined) {
-      let vType = 'void';
-      if (obj['@attr'] && obj['@attr'].__type) {
-        vType = obj['@attr'].__type;
-      }
-      if (obj['@attr'] && obj['@attr'].__count) {
-        obj['@attr'].__count = toSafeInteger(obj['@attr'].__count);
-      }
-      if (toStr) {
-        if (typeof data == 'string') {
-          obj['@content'] = escape(data);
-        } else if (typeof data !== 'object') {
-          obj['@content'] = data.toString();
-        } else {
-          if (Buffer.isBuffer(data)) {
-            obj['@content'] = data.toString('hex');
-          } else if (Array.isArray(data)) {
-            if (vType === 'ip4') {
-              obj['@content'] = data.map(v => int2ip(v)).join(' ');
-            } else {
-              obj['@content'] = data.join(' ');
-            }
+  } else {
+    for (const prop in data) {
+      if (prop == '@attr') {
+        result['@attr'] = {};
+        for (const attr in data[prop]) {
+          result['@attr'][attr] = escape(data[prop][attr]);
+        }
+      } else if (prop == '@content') {
+        const content = data['@content'];
+        let type = get(data, '@attr.__type', 'str');
+        if (typeof content == 'string') {
+          result['@content'] = escape(content);
+        } else if (Buffer.isBuffer(content)) {
+          result['@content'] = content.toString('hex');
+        } else if (Array.isArray(content)) {
+          if (type == 'ip4') {
+            result['@content'] = content.map(v => int2ip(v)).join(' ');
+          } else {
+            result['@content'] = content.join(' ');
           }
         }
       } else {
-        if (typeof data === 'string') {
-          if (vType === 'bin') {
-            obj['@content'] = Buffer.from(data, 'hex');
-          } else if (vType === 'ip4') {
-            const parts = data.split(' ');
-            obj['@content'] = parts.map(ip2int);
-          } else if (vType !== 'str' && vType !== 'void') {
-            const parts = data.split(' ');
-            if (vType.endsWith('64')) {
-              obj['@content'] = parts.map(v => BigInt(v));
-            } else {
-              obj['@content'] = parts.map(v => parseFloat(v));
-            }
-          } else {
-            obj['@content'] = unescape(data);
-          }
-        }
-      }
-    } else {
-      for (const child in obj) {
-        if (typeof obj[child] == 'string' && !toStr) {
-          if (obj[child] === '') {
-            obj[child] = {};
-          } else {
-            obj[child] = {
-              '@attr': {
-                __type: 'str',
-              },
-              '@content': obj[child],
-            };
-          }
-        } else if (child !== '@attr') {
-          transformJObj(obj[child], toStr);
-        }
+        result[prop] = stringed(data[prop]);
       }
     }
   }
+  return result;
+}
+
+function unstringed(data: any): any {
+  if (typeof data !== 'object') return undefined;
+
+  let result: any = {};
+  if (Array.isArray(data)) {
+    result = [];
+    for (const element of data) {
+      result.push(unstringed(element));
+    }
+  } else {
+    for (const prop in data) {
+      if (prop == '@attr') {
+        result['@attr'] = {};
+        for (const attr in data[prop]) {
+          result['@attr'][attr] = unescape(data[prop][attr]);
+        }
+      } else if (prop == '@content') {
+        const content = data['@content'];
+        let type = get(data, '@attr.__type', 'str');
+        if (typeof type != 'string' || typeof content != 'string') {
+          return undefined;
+        }
+
+        if (type == 'str') {
+          result['@content'] = unescape(content);
+        } else if (type == 'bin') {
+          result['@content'] = Buffer.from(content, 'hex');
+        } else if (type == 'ip4') {
+          result['@content'] = content.split(' ').map(v => ip2int(v));
+        } else if (type.endsWith('64')) {
+          result['@content'] = content.split(' ').map(v => BigInt(v));
+        } else {
+          result['@content'] = content.split(' ').map(v => parseFloat(v));
+        }
+      } else {
+        result[prop] = unstringed(data[prop]);
+      }
+    }
+  }
+  return result;
 }
 
 export function dataToXML(data: any, header: boolean = true): string {
@@ -879,12 +870,8 @@ export function dataToXML(data: any, header: boolean = true): string {
     supressEmptyNode: true,
   };
 
-  transformJObj(data);
-
   const parser = new json2xml(options);
-  const xml = parser.parse(data);
-
-  transformJObj(data, false);
+  const xml = parser.parse(stringed(data));
 
   if (header) return "<?xml version='1.0' encoding='UTF-8'?>\n" + xml;
   else return xml;
@@ -904,12 +891,9 @@ export function dataToXMLBuffer(data: any, encoding: KBinEncoding): Buffer {
     supressEmptyNode: true,
   };
 
-  transformJObj(data);
-
   const parser = new json2xml(options);
-  const xml = parser.parse(data);
+  const xml = parser.parse(stringed(data));
 
-  transformJObj(data, false);
   return iconv.encode(`<?xml version='1.0' encoding='${ICONV2XML[encoding]}'?>\n${xml}`, encoding);
 }
 
@@ -947,8 +931,7 @@ export function xmlToData(xml: string | Buffer, encoding?: KBinEncoding): any {
     trimValues: true,
   };
 
-  const data = xml2json.parse(xmlStr, options);
-  transformJObj(data, false);
+  const data = unstringed(xml2json.parse(xmlStr, options));
 
   return data;
 }

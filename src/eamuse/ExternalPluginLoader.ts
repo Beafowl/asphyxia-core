@@ -1,4 +1,4 @@
-import { EamuseModuleContainer, EamuseModuleRoute } from './EamuseModuleContainer';
+import { EamusePluginContainer, EamusePluginRoute } from './EamusePluginContainer';
 import { kitem, karray, kattr, dataToXML } from '../utils/KBinJSON';
 import path from 'path';
 import {
@@ -15,25 +15,17 @@ import {
   getStr,
 } from '../utils/KBinJSON';
 import { Logger } from '../utils/Logger';
-import { ARGS } from '../utils/ArgParser';
 import { KDataReader } from '../utils/KDataReader';
-import {
-  ReadSave,
-  MODULE_PATH,
-  WriteSave,
-  WriteFile,
-  GetCallerModule,
-  ReadPlayerSave,
-  WritePlayerSave,
-} from '../utils/EamuseIO';
+import { PLUGIN_PATH, WriteFile, GetCallerPlugin } from '../utils/EamuseIO';
 import { readdirSync, existsSync } from 'fs';
 import { AddProfileCheck } from './Core/CardManager';
+import { ARGS } from '../utils/ArgConfig';
 
 /* Exposing API */
 const $: any = global;
-const MODULE_ROUTER = new EamuseModuleContainer();
+const PLUGIN_ROUTER = new EamusePluginContainer();
 
-const tsconfig = path.join(MODULE_PATH, 'tsconfig.json');
+const tsconfig = path.join(PLUGIN_PATH, 'tsconfig.json');
 /* ncc/pkg hack */
 // require('typescript');
 const ts_node = require('ts-node');
@@ -45,13 +37,13 @@ if (existsSync(tsconfig)) {
 }
 
 $.R = {
-  Route: (gameCode: string, method: string, handler: EamuseModuleRoute | boolean) => {
+  Route: (gameCode: string, method: string, handler: EamusePluginRoute | boolean) => {
     if (gameCode === '*') return;
-    MODULE_ROUTER.add(gameCode, method, handler);
+    PLUGIN_ROUTER.add(gameCode, method, handler);
   },
-  Unhandled: (gameCode: string, handler?: EamuseModuleRoute) => {
+  Unhandled: (gameCode: string, handler?: EamusePluginRoute) => {
     if (gameCode === '*') return;
-    MODULE_ROUTER.unhandled(gameCode, handler);
+    PLUGIN_ROUTER.unhandled(gameCode, handler);
   },
   ProfileCheck: (gameCode: string, handler: () => boolean) => {
     if (gameCode === '*') return;
@@ -72,7 +64,6 @@ $.$.ELEMENTS = getElements;
 $.$.NUMBER = getNumber;
 $.$.NUMBERS = getNumbers;
 $.$.STR = getStr;
-$.$.toXML = dataToXML;
 
 $.K = {
   ATTR: kattr,
@@ -80,12 +71,11 @@ $.K = {
   ARRAY: karray,
 };
 
-$.IO = {
-  ReadSave,
-  WriteSave,
+$.DB = {};
+
+$.U = {
+  toXML: dataToXML,
   WriteFile,
-  ReadPlayerSave,
-  WritePlayerSave,
 };
 
 if (!ARGS.dev) {
@@ -96,9 +86,9 @@ if (!ARGS.dev) {
   $.console.info = () => {};
 } else {
   $.console.log = (...msgs: any[]) => {
-    const mod = GetCallerModule();
-    if (mod) {
-      Logger.info(msgs.join(' '), { module: mod.name });
+    const plugin = GetCallerPlugin();
+    if (plugin) {
+      Logger.info(msgs.join(' '), { plugin: plugin.name });
     } else {
       Logger.info(msgs.join(' '));
     }
@@ -106,64 +96,64 @@ if (!ARGS.dev) {
   $.console.debug = $.console.log;
   $.console.info = $.console.log;
   $.console.warn = (...msgs: any[]) => {
-    const mod = GetCallerModule();
-    if (mod) {
-      Logger.warn(msgs.join(' '), { module: mod.name });
+    const plugin = GetCallerPlugin();
+    if (plugin) {
+      Logger.warn(msgs.join(' '), { plugin: plugin.name });
     } else {
       Logger.warn(msgs.join(' '));
     }
   };
   $.console.error = (...msgs: any[]) => {
-    const mod = GetCallerModule();
-    if (mod) {
-      Logger.error(msgs.join(' '), { module: mod.name });
+    const plugin = GetCallerPlugin();
+    if (plugin) {
+      Logger.error(msgs.join(' '), { plugin: plugin.name });
     } else {
       Logger.error(msgs.join(' '));
     }
   };
 }
 
-export function LoadExternalModules() {
-  const loadedModules = [];
+export function LoadExternalPlugins() {
+  const loadedPlugins = [];
   try {
-    const modules = readdirSync(MODULE_PATH);
-    for (const mod of modules) {
+    const plugins = readdirSync(PLUGIN_PATH);
+    for (const mod of plugins) {
       const name = path.basename(mod);
-      const modulePath = path.resolve(MODULE_PATH, mod);
-      const moduleExt = path.extname(modulePath);
+      const pluginPath = path.resolve(PLUGIN_PATH, mod);
+      const pluginExt = path.extname(pluginPath);
 
       if (
-        modulePath.endsWith('.d.ts') ||
+        pluginPath.endsWith('.d.ts') ||
         mod.startsWith('_') ||
         mod.startsWith('core') ||
         mod == 'node_modules' ||
-        (moduleExt !== '' && moduleExt !== '.ts' && moduleExt !== '.js')
+        (pluginExt !== '' && pluginExt !== '.ts' && pluginExt !== '.js')
       )
         continue;
 
       try {
-        let instance = require(modulePath);
+        let instance = require(pluginPath);
         if (instance && instance.default != null) {
           instance = instance.default;
         }
 
-        loadedModules.push({ name, instance });
+        loadedPlugins.push({ name, instance });
       } catch (err) {
-        Logger.error(`failed to load`, { module: name });
+        Logger.error(`failed to load`, { plugin: name });
         Logger.error(err);
       }
     }
 
-    for (const loaded of loadedModules) {
+    for (const loaded of loadedPlugins) {
       try {
         loaded.instance.register();
       } catch (err) {
-        Logger.error(`${err}`, { module: loaded.name });
+        Logger.error(`${err}`, { plugin: loaded.name });
       }
     }
   } catch (err) {
-    Logger.warn(`can not find "modules" directory.`);
-    Logger.warn(`make sure your modules are installed under: ${MODULE_PATH}`);
+    Logger.warn(`can not find "plugins" directory.`);
+    Logger.warn(`make sure your plugins are installed under: ${PLUGIN_PATH}`);
   }
 
   /* Disable route registering after external module has been loaded */
@@ -172,7 +162,7 @@ export function LoadExternalModules() {
   }
 
   return {
-    modules: loadedModules,
-    router: MODULE_ROUTER,
+    plugins: loadedPlugins,
+    router: PLUGIN_ROUTER,
   };
 }

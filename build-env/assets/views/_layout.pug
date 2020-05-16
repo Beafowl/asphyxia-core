@@ -1,0 +1,65 @@
+doctype html
+html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-expanded
+  head
+    meta(charset="utf-8")
+    meta(http-equiv="X-UA-Compatible", content="ie=edge")
+    meta(name="viewport", content="width=device-width, initial-scale=1.0")
+    title Asphyxia CORE - #{title}
+    link(rel="stylesheet", href="static/css/bulma.min.css")
+    link(rel="stylesheet", href="static/css/materialdesignicons.min.css")
+    link(rel="stylesheet", href="static/css/style.css")
+  body
+    #app
+    nav.navbar.is-fixed-top#navbar-main
+      .navbar-brand
+        a.navbar-item.is-hidden-desktop.jb-aside-mobile-toggle
+          span.icon
+            i.mdi.mdi-forwardburger.mdi-24px
+        .navbar-item
+          img.logo(src="static/img/logo.png")
+          span Asphyxia CORE
+      .navbar-brand.is-right
+        a.navbar-item.is-hidden-desktop.jb-navbar-menu-toggle(data-target="navbar-menu")
+          span.icon
+            i.mdi.mdi-dots-vertical
+      .navbar-menu#navbar-menu
+        .navbar-end
+          .navbar-item.has-dropdown.has-dropdown-with-icons.has-divider.is-hoverable
+            a.navbar-link.is-arrowless
+              span.icon
+                i.mdi.mdi-menu
+              span Menu
+              span.icon
+                i.mdi.mdi-chevron-down
+            .navbar-dropdown
+              a.navbar-item
+                span.icon
+                  i.mdi.mdi-account
+                span Subitem
+    aside.aside.is-placed-left.is-expanded
+      .aside-tools
+        .aside-tools-label
+          span #{version}
+      .menu.is-menu-main
+        p.menu-label Core
+        ul.menu-list
+          li
+            a.is-active.router-link-active.has-icon
+              span.icon
+                i.mdi.mdi-desktop-mac
+              span.menu-item-label Dashboard
+          li
+            a.router-link-active.has-icon
+              span.icon
+                i.mdi.mdi-account
+              span.menu-item-label Profiles
+          li
+            a.router-link-active.has-icon
+              span.icon
+                i.mdi.mdi-cog
+              span.menu-item-label Settings
+        p.menu-label Module
+
+
+
+    script(type="text/javascript" src="static/js/main.js")

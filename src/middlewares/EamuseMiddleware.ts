@@ -12,7 +12,7 @@ import {
 import { KonmaiEncrypt } from '../utils/KonmaiEncrypt';
 import LzKN from '../utils/LzKN';
 import { Logger } from '../utils/Logger';
-import { EamuseModuleContainer } from '../eamuse/EamuseModuleContainer';
+import { EamusePluginContainer } from '../eamuse/EamusePluginContainer';
 import { EamuseSend } from '../eamuse/EamuseSend';
 import { dataToXML } from '../utils/KBinJSON';
 
@@ -39,12 +39,11 @@ export interface EamuseInfo {
 export const EamuseMiddleware: RequestHandler = async (req, res, next) => {
   res.set('X-Powered-By', 'Asphyxia');
 
-  const agent = req.headers['user-agent'];
+  const agent = req.headers['user-agent'] || '';
 
   if (agent.indexOf('Mozilla') >= 0) {
-    // Skip browser
-    // res.redirect(`http://${ARGS.ui_bind}:${ARGS.ui_port}`);
-    return res.sendStatus(404);
+    (req as any).skip = true;
+    return next();
   }
 
   // if (ACCEPT_AGENTS.indexOf(agent) < 0) {
@@ -155,20 +154,56 @@ export const EamuseMiddleware: RequestHandler = async (req, res, next) => {
   });
 };
 
-export const EamuseRoute = (container: EamuseModuleContainer): RequestHandler => {
-  const route: RequestHandler = async (req, res) => {
+function uncarded(str: string): string {
+  return str.replace(/(^|\s*)[0|E][A-F|a-f|0-9]{15}($|\s+)/g, '$1DEADC0DEFEEDBEEF$2');
+}
+
+function removeCardID(data: any): any {
+  if (typeof data !== 'object') return undefined;
+
+  if (Array.isArray(data)) {
+    for (const element of data) {
+      removeCardID(element);
+    }
+  } else {
+    for (const prop in data) {
+      if (prop == '@attr') {
+        for (const attr in data[prop]) {
+          data['@attr'][attr] = uncarded(data[prop][attr]);
+        }
+      } else if (prop == '@content') {
+        const content = data['@content'];
+        if (typeof content == 'string') {
+          data['@content'] = uncarded(content);
+        }
+      } else {
+        removeCardID(data[prop]);
+      }
+    }
+  }
+  return data;
+}
+
+export const EamuseRoute = (container: EamusePluginContainer): RequestHandler => {
+  const route: RequestHandler = async (req, res, next) => {
+    if ((req as any).skip) {
+      next();
+      return;
+    }
+
     const body = req.body as EABody;
 
     const gameCode = body.model.split(':')[0];
 
     const send = new EamuseSend(body, res);
+    const data = removeCardID(get(body.data, `call.${body.module}`));
     try {
       container.run(
         gameCode,
         body.module,
         body.method,
         { module: body.module, method: body.method, model: body.model },
-        get(body.data, `call.${body.module}`),
+        data,
         send
       );
     } catch (err) {

@@ -3,7 +3,7 @@ import { defaultTo, set, get } from 'lodash';
 import { kencode, xmlToData, KBinEncoding, dataToXMLBuffer } from '../utils/KBinJSON';
 import { KonmaiEncrypt } from '../utils/KonmaiEncrypt';
 import LzKN from '../utils/LzKN';
-import { GetCallerModule, MODULE_PATH } from '../utils/EamuseIO';
+import { GetCallerPlugin, PLUGIN_PATH } from '../utils/EamuseIO';
 import { Logger } from '../utils/Logger';
 
 import { render as ejs, renderFile as ejsFile } from 'ejs';
@@ -84,9 +84,9 @@ export class EamuseSend {
   }
 
   async xml(template: string, data?: any, options?: EamuseSendOption) {
-    const mod = GetCallerModule();
-    if (!mod) {
-      Logger.error(`unexpected error: unknown module`);
+    const plugin = GetCallerPlugin();
+    if (!plugin) {
+      Logger.error(`unexpected error: unknown plugin`);
       return this.object({}, { status: 1 });
     }
 
@@ -98,15 +98,15 @@ export class EamuseSend {
       const rootName = keys[0];
       return this.object(result[rootName], { rootName, ...options });
     } catch (err) {
-      Logger.error(err, { module: mod.name });
+      Logger.error(err, { plugin: plugin.name });
       return this.object({}, { status: 1 });
     }
   }
 
   async pug(template: string, data?: any, options?: EamuseSendOption) {
-    const mod = GetCallerModule();
-    if (!mod) {
-      Logger.error(`unexpected error: unknown module`);
+    const plugin = GetCallerPlugin();
+    if (!plugin) {
+      Logger.error(`unexpected error: unknown plugin`);
       return this.object({}, { status: 1 });
     }
 
@@ -118,25 +118,27 @@ export class EamuseSend {
       const rootName = keys[0];
       return this.object(result[rootName], { rootName, ...options });
     } catch (err) {
-      Logger.error(err, { module: mod.name });
+      Logger.error(err, { plugin: plugin.name });
       return this.object({}, { status: 1 });
     }
   }
 
   async xmlFile(template: string, data?: any, options?: EamuseSendOption) {
-    const mod = GetCallerModule();
-    if (!mod) {
-      Logger.error(`unexpected error: unknown module`);
+    const plugin = GetCallerPlugin();
+    if (!plugin) {
+      Logger.error(`unexpected error: unknown plugin`);
       return this.object({}, { status: 1 });
     }
 
-    if (mod.single) {
-      Logger.error(`cannot render file templates from single-file modules`, { module: mod.name });
+    if (plugin.single) {
+      Logger.error(`cannot render file templates from single-file plugins`, {
+        plugin: plugin.name,
+      });
       return this.object({}, { status: 1 });
     }
 
     try {
-      const xml = await ejsFile(path.join(MODULE_PATH, mod.name, template), data, {});
+      const xml = await ejsFile(path.join(PLUGIN_PATH, plugin.name, template), data, {});
       const result = xmlToData(xml);
 
       const keys = Object.keys(result);
@@ -144,32 +146,34 @@ export class EamuseSend {
       const rootName = keys[0];
       return this.object(result[rootName], { rootName, ...options });
     } catch (err) {
-      Logger.error(err, { module: mod.name });
+      Logger.error(err, { plugin: plugin.name });
       return this.object({}, { status: 1 });
     }
   }
 
   async pugFile(template: string, data?: any, options?: EamuseSendOption) {
-    const mod = GetCallerModule();
-    if (!mod) {
-      Logger.error(`unexpected error: unknown module`);
+    const plugin = GetCallerPlugin();
+    if (!plugin) {
+      Logger.error(`unexpected error: unknown plugin`);
       return this.object({}, { status: 1 });
     }
 
-    if (mod.single) {
-      Logger.error(`cannot render file templates from single-file modules`, { module: mod.name });
+    if (plugin.single) {
+      Logger.error(`cannot render file templates from single-file plugins`, {
+        plugin: plugin.name,
+      });
       return this.object({}, { status: 1 });
     }
 
     try {
-      const result = xmlToData(pugFile(path.join(MODULE_PATH, mod.name, template), data));
+      const result = xmlToData(pugFile(path.join(PLUGIN_PATH, plugin.name, template), data));
 
       const keys = Object.keys(result);
       if (keys.length <= 0) return this.object({}, options);
       const rootName = keys[0];
       return this.object(result[rootName], { rootName, ...options });
     } catch (err) {
-      Logger.error(err, { module: mod.name });
+      Logger.error(err, { plugin: plugin.name });
       return this.object({}, { status: 1 });
     }
   }

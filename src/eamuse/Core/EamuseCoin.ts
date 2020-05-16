@@ -1,9 +1,9 @@
 import { set } from 'lodash';
 
 import { kitem } from '../../utils/KBinJSON';
-import { EamuseModuleContainer } from '../EamuseModuleContainer';
+import { EamusePluginContainer } from '../EamusePluginContainer';
 
-export const eacoin = new EamuseModuleContainer();
+export const eacoin = new EamusePluginContainer();
 
 eacoin.add('*', 'eacoin.checkout', async (info, data, send) => {
   await send.success();

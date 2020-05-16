@@ -1,15 +1,18 @@
+if ((process as any).pkg) process.env.NODE_ENV = 'production';
+
 import { Logger } from './utils/Logger';
-import { ARGS } from './utils/ArgParser';
-import { services } from './eamuse/Services';
+import { ARGS, CONFIG, ReadConfig, SaveConfig } from './utils/ArgConfig';
+import { services } from './eamuse';
 import { VERSION } from './utils/Consts';
 import { pad } from 'lodash';
 import express from 'express';
 import chalk from 'chalk';
-import { LoadExternalModules } from './eamuse/ExternalModuleLoader';
-// import { CreateTray } from './utils/Systray';
+import { LoadExternalPlugins } from './eamuse/ExternalPluginLoader';
+import { webui } from './webui/index';
+import path from 'path';
+import { ASSETS_PATH } from './utils/EamuseIO';
 
 process.title = `Asphyxia CORE ${VERSION}`;
-// CreateTray();
 
 Logger.info('                        _                _        ');
 Logger.info('        /\\             | |              (_)      ');
@@ -37,15 +40,23 @@ EAMUSE.disable('x-powered-by');
 if (ARGS.dev) {
   Logger.info(` [Console Output Enabled]`);
 }
-const external = LoadExternalModules();
-process.title = `Asphyxia CORE ${VERSION} | Modules: ${external.modules.length}`;
-if (external.modules.length <= 0) {
-  Logger.warn(chalk.yellowBright('no modules are installed.'));
+const external = LoadExternalPlugins();
+process.title = `Asphyxia CORE ${VERSION} | Plugins: ${external.plugins.length}`;
+if (external.plugins.length <= 0) {
+  Logger.warn(chalk.yellowBright('no plugins are installed.'));
   Logger.info('');
 }
 
+// ========== READCONFIG ===========
+ReadConfig();
+SaveConfig();
+
 // ========== EAMUSE ============
-EAMUSE.use('*', services(`http://${ARGS.bind}:${ARGS.port}`, external.router));
+EAMUSE.set('views', path.join(ASSETS_PATH, 'views'));
+EAMUSE.set('view engine', 'pug');
+EAMUSE.use('*', services(`http://${CONFIG.bind}:${CONFIG.port}`, external.router));
+EAMUSE.use('/static', express.static(path.join(ASSETS_PATH, 'static')));
+EAMUSE.use(webui);
 
 // // ========== WEB_UI ============
 // WEBUI.get('/', async (req, res) => {
@@ -53,9 +64,9 @@ EAMUSE.use('*', services(`http://${ARGS.bind}:${ARGS.port}`, external.router));
 // });
 
 // ========== LISTEN ============
-const server = EAMUSE.listen(ARGS.port, ARGS.bind, () => {
+const server = EAMUSE.listen(CONFIG.port, CONFIG.bind, () => {
   Logger.info(`  [core] Server started:`);
-  const serverInfo = `http://${ARGS.bind}:${ARGS.port}`;
+  const serverInfo = `http://${CONFIG.bind}:${CONFIG.port}`;
   Logger.info(`       +==================== EA ==================+`);
   Logger.info(`       |${pad(serverInfo, 42)}|`);
   Logger.info(`       +==========================================+`);
