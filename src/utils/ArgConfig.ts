@@ -77,19 +77,18 @@ export interface CONFIG_OPTIONS {
   desc?: string;
   type: 'string' | 'integer' | 'float' | 'boolean';
   range?: [number, number];
-  validator?: (data: string) => boolean;
-  onchange?: (key: string, value: string) => void;
-  slider?: boolean;
+  validator?: (data: string) => true | string;
+  onchange?: (key: string, value: string) => Promise<void>;
   options?: string[];
   needRestart?: boolean;
   default: any;
 }
 
-export type CONFIG_DATA = CONFIG_OPTIONS & { current: any };
+export type CONFIG_DATA = CONFIG_OPTIONS & { key: string; current: any; error?: string };
 
 let INI: any = null;
 
-const CONFIG_MAP: {
+export const CONFIG_MAP: {
   [key: string]: Map<string, CONFIG_OPTIONS>;
 } = {
   core: new Map(),
@@ -113,6 +112,7 @@ function CoreConfig() {
     type: 'integer',
     range: [0, 65535],
     default: 5700,
+    desc: 'Matchmaking port (if plugin supports it)',
   });
 
   CONFIG_MAP['core'].set('allow_register', {
@@ -131,7 +131,7 @@ function CoreConfig() {
   CONFIG_MAP['core'].set('enable_paseli', {
     // TODO: use this
     type: 'boolean',
-    default: false,
+    default: true,
   });
 }
 CoreConfig();

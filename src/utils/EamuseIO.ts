@@ -8,7 +8,7 @@ const pkg: boolean = (process as any).pkg;
 export const EXEC_PATH = pkg ? path.dirname(process.argv0) : process.cwd();
 export const PLUGIN_PATH = path.join(EXEC_PATH, 'plugins');
 export const SAVE_PATH = path.join(EXEC_PATH, 'savedata');
-export const ASSETS_PATH = path.join(pkg ? __dirname : `../../build-env`, 'assets');
+export const ASSETS_PATH = path.join(pkg ? __dirname : `../build-env`, 'assets');
 export const CONFIG_PATH = path.join(EXEC_PATH, 'config.ini');
 
 export const DB = new nedb({ filename: path.join(SAVE_PATH, 'core.db'), autoload: true });

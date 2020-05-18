@@ -1,10 +1,27 @@
 doctype html
 mixin li_menu_item(icon, label, link)
   li
-    a.router-link-active.has-icon(class=((title == label) ? 'is-active' : '') href=link)
+    a.has-icon(class=((title == label) ? 'is-active' : '') href=link)
       span.icon
         i.mdi(class='mdi-'+icon)
       span.menu-item-label #{label}
+
+mixin li_plugin(icon, label, link)
+  li(class=(title == label) ? 'is-active' : '')
+    a.has-icon.has-dropdown-icon(class=(title == label) ? 'is-active' : '' href=link)
+      span.icon
+        i.mdi(class='mdi-'+icon)
+      span.menu-item-label #{label}
+      .dropdown-icon
+        span.icon.plus
+          i.mdi.mdi-plus
+        span.icon.minus
+          i.mdi.mdi-minus
+    ul
+      li
+        a(href=link+"?page=profiles" class=(((title == label) && (subtitle == 'Profiles')) ? 'is-active' : ''))
+          span Profiles
+
 
 html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-expanded
   head
@@ -16,8 +33,10 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
     link(rel="stylesheet", href="/static/css/margin.min.css")
     link(rel="stylesheet", href="/static/css/materialdesignicons.min.css")
     link(rel="stylesheet", href="/static/css/tooltip.min.css")
+    link(rel="stylesheet", href="/static/css/bulma-slider.min.css")
     link(rel="stylesheet", href="/static/css/style.css")
-    script(type="text/javascript" src="/static/js/axios.js")
+    script(type="text/javascript" src="/static/js/axios.min.js")
+    script(type="text/javascript" src="/static/js/bulma-slider.min.js")
     block styles
   body
     #app
@@ -57,7 +76,6 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
           ul.menu-list
             +li_menu_item("desktop-mac", "Dashboard", "/")
             +li_menu_item("account-circle", "Profiles", "/profiles")
-            +li_menu_item("cog", "Settings", "/settings")
             +li_menu_item("help-circle", "About", "/about")
           p.menu-label Plugins
           ui.menu-list
@@ -69,7 +87,7 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
                 var isAlpha = /[a-z]/.test(char);
                 var isNumeric = /[0-9]/.test(char);
                 var icon = isAlpha ? `alpha-${char}-circle` : (isNumeric ? `numeric-${char}-circle` : 'record-circle');
-              +li_menu_item(icon, label, '/plugin/'+link)
+              +li_plugin(icon, label, '/plugin/'+link)
       .content
         section.hero.is-hero-bar
           .hero-body.title #{title}
@@ -82,7 +100,7 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
             | Made with
             span.icon.has-text-danger
               i.mdi.mdi-heart
-            | by TsFreddie | Plugins by 
+            | by Team Asphyxia | Plugins by 
             a(href="/about") Community
       
       script(type="text/javascript" src="/static/js/main.js")

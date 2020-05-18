@@ -31,6 +31,7 @@ export interface EABody {
 }
 
 export interface EamuseInfo {
+  gameCode: string;
   module: string;
   method: string;
   model: string;
@@ -202,7 +203,7 @@ export const EamuseRoute = (container: EamusePluginContainer): RequestHandler =>
         gameCode,
         body.module,
         body.method,
-        { module: body.module, method: body.method, model: body.model },
+        { gameCode, module: body.module, method: body.method, model: body.model },
         data,
         send
       );

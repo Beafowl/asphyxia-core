@@ -1,0 +1,61 @@
+mixin form_control(option)
+  .field.is-horizontal
+    .field-label(class=(option.type != 'boolean') ? "is-normal" : "")
+      label.label(for=option.key) #{option.name}
+    .field-body
+      .field
+        if option.type == 'float'
+          .control.is-expanded(class=option.error ? 'has-icons-right' : '')
+            if option.range
+              input.input(title='' type='number' name=option.key min=option.range[0] max=option.range[1] value=option.current class=option.error ? 'is-danger' : '')
+            else
+              input.input(title='' type='number' name=option.key value=option.current class=option.error ? 'is-danger' : '')
+            if option.error
+              span.icon.is-small.is-right.has-text-danger
+                i.mdi.mdi-alert
+        if option.type == 'integer'
+          .control.is-expanded(class=option.error ? 'has-icons-right' : '' data-tooltip=option.error)
+            if option.range
+              input.input(title='' type='number' name=option.key step=1 min=option.range[0] max=option.range[1] value=option.current class=option.error ? 'is-danger' : '')
+            else
+              input.input(title='' type='number' name=option.key step=1 value=option.current class=option.error ? 'is-danger' : '')
+            if option.error
+              span.icon.is-small.is-right.has-text-danger
+                i.mdi.mdi-alert
+        if option.type == 'string'
+          .control.is-expanded(class=option.error ? 'has-icons-right' : '' data-tooltip=option.error)
+            if option.options
+              .select 
+                select(type='text' name=option.key)
+                  each choice in option.options
+                    if choice == option.current
+                      option(selected) #{choice}
+                    else
+                      option() #{choice}
+            else
+              input.input(type='text' name=option.key value=option.current class=option.error ? 'is-danger' : '')
+              if option.error
+                span.icon.is-small.is-right.has-text-danger
+                  i.mdi.mdi-alert
+        if option.type == 'boolean'
+          .control
+            label.switch.is-rounded
+              input(type='checkbox' name=option.key checked=option.current)
+              span.check
+        p.help #{option.desc}
+mixin form(name, options)
+  .card
+    header.card-header
+      p.card-header-title
+        span.icon
+          i.mdi.mdi-cog
+        | #{name}
+    .card-content
+      form(method='post')
+        each option in options
+          +form_control(option)
+        .field.is-grouped
+          .control.is-expanded
+            .notification.is-danger.is-light(class=formMessage && formMessage.length ? '' : 'is-hidden') #{formMessage}
+          .control
+            button.button.is-link(type='submit') Apply

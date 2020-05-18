@@ -79,11 +79,11 @@ $.U = {
 
 function EnableRegisterNamespace() {
   $.R = {
-    Route: (gameCode: string, method: string, handler: EamusePluginRoute | boolean) => {
+    Route: (method: string, handler: EamusePluginRoute | boolean) => {
       if (gameCode === '*') return;
       PLUGIN_ROUTER.add(gameCode, method, handler);
     },
-    Unhandled: (gameCode: string, handler?: EamusePluginRoute) => {
+    Unhandled: (handler?: EamusePluginRoute) => {
       if (gameCode === '*') return;
       PLUGIN_ROUTER.unhandled(gameCode, handler);
     },
@@ -152,6 +152,7 @@ export function LoadExternalPlugins() {
       if (
         pluginPath.endsWith('.d.ts') ||
         mod.startsWith('_') ||
+        mod.startsWith('.') ||
         mod.startsWith('core') ||
         mod == 'node_modules' ||
         (pluginExt !== '' && pluginExt !== '.ts' && pluginExt !== '.js')

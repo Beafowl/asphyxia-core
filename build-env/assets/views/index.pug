@@ -1,4 +1,5 @@
 extends _layout.pug
+include _settings.pug
 
 block content
   .columns
@@ -35,3 +36,32 @@ block content
             .level-item
               span.icon.is-large.has-text-danger
                 i.mdi.mdi-48px.mdi-memory
+
+  .columns
+    .column
+      .card
+        header.card-header
+          p.card-header-title
+            span.icon
+              i.mdi.mdi-information-outline
+            | Information
+        .card-content
+          P Homepage: 
+            a(href="https://team-asphyxia.github.io/") https://team-asphyxia.github.io/
+          P Latest Community Plugins: 
+            a(href="https://team-asphyxia.github.io/") https://team-asphyxia.github.io/
+          p
+            | Asphyxia CORE is a 
+            b.has-text-danger FREE
+            | 
+            | software made by and for gaming community. If you bought this software, you have been scammed.
+        
+      .card
+        header.card-header
+          p.card-header-title
+            span.icon
+              i.mdi.mdi-format-list-bulleted
+            | Changelog
+        .card-content !{changelog}
+    .column
+      +form('CORE Settings', config, 'core')

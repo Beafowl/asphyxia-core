@@ -11,7 +11,6 @@ import { LoadExternalPlugins } from './eamuse/ExternalPluginLoader';
 import { webui } from './webui/index';
 import path from 'path';
 import { ASSETS_PATH } from './utils/EamuseIO';
-import { renderFile } from 'pug';
 
 process.title = `Asphyxia CORE ${VERSION}`;
 
@@ -68,7 +67,7 @@ EAMUSE.use(webui);
 const server = EAMUSE.listen(CONFIG.port, CONFIG.bind, () => {
   Logger.info(`  [core] Server started:`);
   const serverInfo = `http://${CONFIG.bind}:${CONFIG.port}`;
-  Logger.info(`       +==================== EA ==================+`);
+  Logger.info(`       +============= Service & WebUI ============+`);
   Logger.info(`       |${pad(serverInfo, 42)}|`);
   Logger.info(`       +==========================================+`);
   Logger.info('');

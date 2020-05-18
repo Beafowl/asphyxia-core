@@ -22,3 +22,36 @@ html.has-aside-mobile-transition body,
 html.has-aside-mobile-transition nav.navbar {
   width: calc(100vw - (100vw - 100%));
 }
+
+.is-active .dropdown-icon .plus {
+  display: none;
+}
+
+.is-active .dropdown-icon .minus {
+  display: inline-flex;
+}
+
+.dropdown-icon .minus {
+  display: none;
+}
+
+.field.is-horizontal div.field-label {
+  min-width: 120px;
+}
+
+.control > .notification {
+  padding: 0.5em 1em;
+}
+
+#contrib-tags {
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
+  display: flex;
+  flex-flow: row wrap;
+  justify-content: center;
+}
+
+a.tag.is-dark:hover {
+  background-color: black;
+}
