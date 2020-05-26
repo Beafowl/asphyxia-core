@@ -20,6 +20,7 @@ import {
   CreateCard,
   FindCard,
   DeleteCard,
+  APIFind,
 } from '../utils/EamuseIO';
 import { urlencoded, json } from 'body-parser';
 import { Logger } from '../utils/Logger';
@@ -28,6 +29,8 @@ import path from 'path';
 import { ROOT_CONTAINER } from '../eamuse/index';
 import { fun } from './fun';
 import { card2nfc, nfc2card, cardType } from '../utils/CardCipher';
+import { groupBy } from 'lodash';
+import { sizeof } from 'sizeof';
 
 const memorystore = createMemoryStore(session);
 
@@ -56,7 +59,11 @@ function data(req: Request, title: string, attr?: any) {
     version: VERSION,
     formMessage,
     plugins: ROOT_CONTAINER.Plugins.map(p => {
-      return { name: p.Name, id: p.Identifier };
+      return {
+        name: p.Name,
+        id: p.Identifier,
+        pages: p.Pages.map(f => ({ name: humanize(f), link: f })),
+      };
     }),
     ...attr,
   };
@@ -89,7 +96,7 @@ function validate(c: CONFIG_OPTIONS, current: any) {
   return null;
 }
 
-function configData(plugin: string) {
+function ConfigData(plugin: string) {
   const config: CONFIG_DATA[] = [];
   const configMap = CONFIG_MAP[plugin];
   const configData = plugin == 'core' ? CONFIG : CONFIG[plugin];
@@ -138,7 +145,7 @@ webui.get(
   '/',
   wrap(async (req, res) => {
     const memory = `${(process.memoryUsage().rss / 1048576).toFixed(2)}MB`;
-    const config = configData('core');
+    const config = ConfigData('core');
 
     const changelog = markdown.makeHtml(ReadAssets('changelog.md'));
 
@@ -152,7 +159,7 @@ webui.get(
   wrap(async (req, res) => {
     const profiles = await GetProfiles();
     for (const profile of profiles) {
-      profile.cards = await Count({ __reserved_field: 'card', refid: profile.refid });
+      profile.cards = await Count({ __reserved_field: 'card', __refid: profile.__refid });
     }
     res.render('profiles', data(req, 'Profiles', { profiles }));
   })
@@ -182,6 +189,7 @@ webui.get(
     }
 
     profile.cards = await FindCardsByRefid(refid);
+
     res.render('profiles_profile', data(req, 'Profiles', { profile, subtitle: profile.name }));
   })
 );
@@ -280,6 +288,7 @@ webui.get(
   })
 );
 
+// Plugin Overview
 webui.get(
   '/plugin/:plugin',
   wrap(async (req, res, next) => {
@@ -300,14 +309,13 @@ webui.get(
       readme = null;
     }
 
-    const config = configData(pluginName);
+    const config = ConfigData(pluginName);
     const contributors = plugin ? plugin.Contributors : [];
     const gameCodes = plugin ? plugin.GameCodes : [];
 
-    const name = pluginName.split('@')[0].toUpperCase();
     res.render(
       'plugin',
-      data(req, name, {
+      data(req, plugin.Name, {
         plugin: pluginName,
         readme,
         config,
@@ -315,6 +323,110 @@ webui.get(
         gameCodes,
         subtitle: 'Overview',
       })
+    );
+  })
+);
+
+// Plugin Profiles
+webui.get(
+  '/plugin/:plugin/profiles',
+  wrap(async (req, res, next) => {
+    const pluginName = req.params['plugin'];
+    const plugin = ROOT_CONTAINER.getPluginByName(pluginName);
+
+    if (!plugin) {
+      return next();
+    }
+
+    const profiles = groupBy(
+      await APIFind({ name: plugin.Identifier, core: true }, null, {}),
+      '__refid'
+    );
+
+    const profileData: any[] = [];
+    for (const refid in profiles) {
+      let name = undefined;
+      for (const doc of profiles[refid]) {
+        if (typeof doc.name == 'string') {
+          name = doc.name;
+          break;
+        }
+      }
+
+      profileData.push({
+        refid,
+        name,
+        dataSize: sizeof(profiles[refid], true),
+        coreProfile: await FindProfile(refid),
+      });
+    }
+
+    res.render(
+      'plugin_profiles',
+      data(req, plugin.Name, { plugin: pluginName, subtitle: 'Profiles', profiles: profileData })
+    );
+  })
+);
+
+// Plugin Profile Page
+webui.get(
+  '/plugin/:plugin/profile',
+  wrap(async (req, res, next) => {
+    const pluginName = req.params['plugin'];
+    const plugin = ROOT_CONTAINER.getPluginByName(pluginName);
+
+    if (!plugin) {
+      return next();
+    }
+
+    const refid = req.query['refid'];
+
+    if (refid == null) {
+      return next();
+    }
+
+    const pageName = req.query['page'];
+
+    let page = null;
+    if (pageName == null) {
+      page = plugin.FirstProfilePage;
+    } else {
+      page = pageName.toString();
+    }
+
+    const content = await plugin.render(page, refid.toString());
+    if (content == null) {
+      return next();
+    }
+
+    res.render(
+      'custom',
+      data(req, plugin.Name, { content, subtitle: 'Profiles', plugin: pluginName })
+    );
+  })
+);
+
+// Plugin Custom Pages
+webui.get(
+  '/plugin/:plugin/:page',
+  wrap(async (req, res, next) => {
+    const pluginName = req.params['plugin'];
+    const plugin = ROOT_CONTAINER.getPluginByName(pluginName);
+
+    if (!plugin) {
+      return next();
+    }
+
+    const pageName = req.params['page'];
+
+    const content = await plugin.render(pageName);
+    if (content == null) {
+      return next();
+    }
+
+    res.render(
+      'custom',
+      data(req, plugin.Name, { content, subtitle: humanize(pageName), plugin: pluginName })
     );
   })
 );

@@ -1,13 +1,12 @@
 import { EamuseRouteContainer, EamuseRouteHandler } from './EamuseRouteContainer';
 import { EamusePlugin } from './EamusePlugin';
-import { Logger } from '../utils/Logger';
 import { EamuseInfo } from '../middlewares/EamuseMiddleware';
 import { EamuseSend } from './EamuseSend';
 
 export class EamuseRootRouter {
   private core: EamuseRouteContainer;
   private pluginMap: {
-    [gameCode: string]: EamusePlugin;
+    [gameCode: string]: EamusePlugin[];
   };
   private pluginMapID: {
     [name: string]: EamusePlugin;
@@ -32,12 +31,9 @@ export class EamuseRootRouter {
     for (const plugin of plugins) {
       for (const code of plugin.GameCodes) {
         if (this.pluginMap[code]) {
-          Logger.warn(
-            `register failed - '${code}' is already registered by ${this.pluginMap[code].Name}`,
-            { plugin: plugin.Identifier }
-          );
+          this.pluginMap[code].push(plugin);
         } else {
-          this.pluginMap[code] = plugin;
+          this.pluginMap[code] = [plugin];
         }
       }
       this.pluginMapID[plugin.Identifier] = plugin;
@@ -53,11 +49,14 @@ export class EamuseRootRouter {
     send: EamuseSend
   ) {
     if (await this.core.run(moduleName, method, info, data, send)) return;
-    if (
-      this.pluginMap[gameCode] &&
-      (await this.pluginMap[gameCode].run(moduleName, method, info, data, send))
-    )
-      return;
+    if (this.pluginMap[gameCode]) {
+      let success = false;
+      for (const plugin of this.pluginMap[gameCode]) {
+        const res = await plugin.run(moduleName, method, info, data, send);
+        success = success || res;
+      }
+      if (success) return;
+    }
 
     await send.deny();
     return;

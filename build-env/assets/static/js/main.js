@@ -74,11 +74,13 @@ Array.from(document.getElementsByClassName('jb-notification-dismiss')).forEach(e
   $('[jdenticon]').each(function (i, obj) {
     var str = $(this).attr('jdenticon');
     var size = $(this).attr('jdenticon-size');
+    if (str == '') str = Math.random().toString();
     $(this).html(jdenticon.toSvg(str, parseInt(size)));
   });
 
   $('[geopattern]').each(function (i, obj) {
     var str = $(this).attr('geopattern');
+    if (str == '') str = undefined;
     $(this).css({ background: GeoPattern.generate(str).toDataUrl() });
   });
 })();

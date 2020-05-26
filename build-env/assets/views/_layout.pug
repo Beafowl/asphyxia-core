@@ -6,7 +6,7 @@ mixin li_menu_item(icon, label, link)
         i.mdi(class='mdi-'+icon)
       span.menu-item-label #{label}
 
-mixin li_plugin(icon, label, link)
+mixin li_plugin(icon, label, link, pages)
   li(class=(plugin == link) ? 'is-active' : '')
     a.has-icon.has-dropdown-icon(class=(plugin == link) ? 'is-active' : '' href='/plugin/' + link)
       span.icon
@@ -19,9 +19,13 @@ mixin li_plugin(icon, label, link)
           i.mdi.mdi-minus
     ul
       li
-        a(href=link class=(((title == label) && (subtitle == 'Overview')) ? 'is-active' : ''))
+        a(href=`/plugin/${link}` class=(((title == label) && (subtitle == 'Overview')) ? 'is-active' : ''))
           span Overview
-
+        a(href=`/plugin/${link}/profiles` class=(((title == label) && (subtitle == 'Profiles')) ? 'is-active' : ''))
+          span Profiles
+        each page in pages
+          a(href=`/plugin/${link}/${page.link}` class=(((title == label) && (subtitle == page.name)) ? 'is-active' : ''))
+            span #{page.name}
 html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-expanded
   head
     meta(charset="utf-8")
@@ -98,7 +102,7 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
                 var isAlpha = /[a-z]/.test(char);
                 var isNumeric = /[0-9]/.test(char);
                 var icon = isAlpha ? `alpha-${char}-circle` : (isNumeric ? `numeric-${char}-circle` : 'record-circle');
-              +li_plugin(icon, label, link)
+              +li_plugin(icon, label, link, plugin.pages)
       .content
         section.hero.is-hero-bar
           .hero-body

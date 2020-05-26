@@ -8,7 +8,7 @@ block content
           p.card-header-title
             span.icon
               i.mdi.mdi-account
-            | Profile
+            | Details
         .card-content
           .columns
             .column.is-narrow
@@ -20,7 +20,7 @@ block content
                 .field-body
                   .field
                     .control
-                      span.tag.is-info#refid #{profile.refid}
+                      span.tag.is-info#refid #{profile.__refid}
               form(method='post')
                 .field.is-horizontal.is-narrow
                   .field-label.is-normal
@@ -44,7 +44,10 @@ block content
                       else
                         .notification.is-success.is-light #{formMessage.message}
                   .control
-                    button.button.is-link(type='submit') Change
+                    button.button.is-link(type='submit')
+                      span.icon.is-small
+                        i.mdi.mdi-pencil
+                      span Change
     .column
       .card
         header.card-header
@@ -55,13 +58,15 @@ block content
         .card-content
           .field.is-horizontal.is-narrow
             .field-label.is-normal
-              label.label New Card
+              label.label Add
             .field-body
               .field.has-addons
                 .control.is-expanded
                   input.input#card-input(type='text' placeholder='Card Number' name='card')
                 .control
-                  button.button.is-primary#add-card Add
+                  button.button.is-primary#add-card
+                    span.icon.is-small
+                      i.mdi.mdi-plus
           each card in profile.cards
             .ecard.box.is-paddingless(geopattern=card.cid)
               .ecard-brand ASPHYXIA

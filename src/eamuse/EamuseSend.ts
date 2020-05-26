@@ -6,11 +6,12 @@ import LzKN from '../utils/LzKN';
 import { GetCallerPlugin, PLUGIN_PATH } from '../utils/EamuseIO';
 import { Logger } from '../utils/Logger';
 
-import { render as ejs, renderFile as ejsFile } from 'ejs';
-import { render as pug, renderFile as pugFile } from 'pug';
+import { render as ejs, compile as ejsCompile } from 'ejs';
+import { render as pug, compileFile as pugCompileFile } from 'pug';
 import path from 'path';
 import { EABody } from '../middlewares/EamuseMiddleware';
 import chalk from 'chalk';
+import { readFileSync } from 'fs';
 
 export interface EamuseSendOption {
   status?: number;
@@ -31,7 +32,7 @@ export class EamuseSend {
     this.res = res;
   }
 
-  async object(content: any = {}, options: EamuseSendOption = {}) {
+  object(content: any = {}, options: EamuseSendOption = {}) {
     if (this.sent) {
       Logger.warn(
         `duplicated send operation from ${chalk.yellowBright(
@@ -39,9 +40,9 @@ export class EamuseSend {
         )}`
       );
       return;
+    } else {
+      this.sent = true;
     }
-
-    this.sent = true;
 
     const encoding = defaultTo(options.encoding, this.body.encoding);
     const status = defaultTo(options.status, get(content, '@attr.status', 0));
@@ -80,10 +81,15 @@ export class EamuseSend {
       data = key.encrypt(data);
     }
 
+    const plugin = GetCallerPlugin();
+    if (plugin) {
+      this.res.setHeader('X-CORE-Plugin', plugin.identifier);
+    }
+
     this.res.send(data);
   }
 
-  async xml(template: string, data?: any, options?: EamuseSendOption) {
+  xml(template: string, data?: any, options?: EamuseSendOption) {
     const plugin = GetCallerPlugin();
     if (!plugin) {
       Logger.error(`unexpected error: unknown plugin`);
@@ -103,7 +109,7 @@ export class EamuseSend {
     }
   }
 
-  async pug(template: string, data?: any, options?: EamuseSendOption) {
+  pug(template: string, data?: any, options?: EamuseSendOption) {
     const plugin = GetCallerPlugin();
     if (!plugin) {
       Logger.error(`unexpected error: unknown plugin`);
@@ -123,7 +129,7 @@ export class EamuseSend {
     }
   }
 
-  async xmlFile(template: string, data?: any, options?: EamuseSendOption) {
+  xmlFile(template: string, data?: any, options?: EamuseSendOption) {
     const plugin = GetCallerPlugin();
     if (!plugin) {
       Logger.error(`unexpected error: unknown plugin`);
@@ -131,8 +137,9 @@ export class EamuseSend {
     }
 
     try {
-      const xml = await ejsFile(path.join(PLUGIN_PATH, plugin.identifier, template), data, {});
-      const result = xmlToData(xml);
+      const filePath = path.join(PLUGIN_PATH, plugin.identifier, template);
+      const fn = ejsCompile(readFileSync(filePath, { encoding: 'utf8' }));
+      const result = xmlToData(fn(data));
 
       const keys = Object.keys(result);
       if (keys.length <= 0) return this.object({}, options);
@@ -144,7 +151,7 @@ export class EamuseSend {
     }
   }
 
-  async pugFile(template: string, data?: any, options?: EamuseSendOption) {
+  pugFile(template: string, data?: any, options?: EamuseSendOption) {
     const plugin = GetCallerPlugin();
     if (!plugin) {
       Logger.error(`unexpected error: unknown plugin`);
@@ -152,7 +159,9 @@ export class EamuseSend {
     }
 
     try {
-      const result = xmlToData(pugFile(path.join(PLUGIN_PATH, plugin.identifier, template), data));
+      const filePath = path.join(PLUGIN_PATH, plugin.identifier, template);
+      const fn = pugCompileFile(filePath);
+      const result = xmlToData(fn(data));
 
       const keys = Object.keys(result);
       if (keys.length <= 0) return this.object({}, options);

@@ -34,24 +34,24 @@ function Main() {
   Logger.info(` `);
 
   const EAMUSE = express();
-  // const WEBUI = express();
 
   EAMUSE.disable('etag');
   EAMUSE.disable('x-powered-by');
 
   if (ARGS.dev) {
-    Logger.info(` [Console Output Enabled]`);
+    Logger.info(` [Developer Mode] Console Output Enabled`);
+    Logger.info(``);
   }
+
+  ReadConfig();
   const external = LoadExternalPlugins();
+  SaveConfig();
+
   process.title = `Asphyxia CORE ${VERSION} | Plugins: ${external.length}`;
   if (external.length <= 0) {
     Logger.warn(chalk.yellowBright('no plugins are installed.'));
     Logger.info('');
   }
-
-  // ========== READCONFIG ===========
-  ReadConfig();
-  SaveConfig();
 
   // ========== EAMUSE ============
   EAMUSE.set('views', path.join(ASSETS_PATH, 'views'));
@@ -62,6 +62,7 @@ function Main() {
 
   // ========== LISTEN ============
   const server = EAMUSE.listen(CONFIG.port, CONFIG.bind, () => {
+    Logger.info(``);
     Logger.info(`  [core] Server started:`);
     const serverInfo = `http://${CONFIG.bind}:${CONFIG.port}`;
     Logger.info(`       +============= Service & WebUI ============+`);

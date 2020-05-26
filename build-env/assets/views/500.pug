@@ -1,13 +1,11 @@
 extends _layout.pug
 
 block content
-  - var style = `background: ${random};` 
-  section.hero.is-dark(style=style)
+  section.hero.is-dark(geopattern)
     .hero-body
       .columns
         .column.is-narrow
-          .image.is-128x128
-            img(src=`data:image/svg+xml;base64,${art}` style="background-color: #ffffffaa")
+          .image.is-128x128(style="background-color: #ffffffaa" jdenticon jdenticon-size=128)
         .column
           h1.title Something went wrong
           p.subtitle Let me distract you with this random pattern.

@@ -1,4 +1,4 @@
-import { kitem, karray, kattr, dataToXML } from '../utils/KBinJSON';
+import { kitem, karray, kattr, dataToXML, xmlToData } from '../utils/KBinJSON';
 import path from 'path';
 import {
   getAttr,
@@ -15,11 +15,27 @@ import {
 } from '../utils/KBinJSON';
 import { Logger } from '../utils/Logger';
 import { KDataReader } from '../utils/KDataReader';
-import { PLUGIN_PATH, WriteFile, GetCallerPlugin } from '../utils/EamuseIO';
-import { readdirSync, existsSync, statSync } from 'fs';
-import { ARGS, PluginRegisterConfig } from '../utils/ArgConfig';
+import {
+  PLUGIN_PATH,
+  Resolve,
+  Exists,
+  WriteFile,
+  ReadFile,
+  ReadDir,
+  GetCallerPlugin,
+  APIFindOne,
+  APIFind,
+  APIInsert,
+  APIRemove,
+  APIUpdate,
+  APIUpsert,
+  APICount,
+} from '../utils/EamuseIO';
+import { readdirSync, existsSync } from 'fs';
+import { ARGS, PluginRegisterConfig, CONFIG } from '../utils/ArgConfig';
 import { EamusePlugin } from './EamusePlugin';
 import { EamuseRouteHandler } from './EamuseRouteContainer';
+import xml2json from 'fast-xml-parser';
 
 /* Exposing API */
 const $: any = global;
@@ -57,11 +73,88 @@ $.K = {
   ARRAY: karray,
 };
 
-$.DB = {};
+$.IO = {
+  Resolve,
+  Exists,
+  WriteFile,
+  ReadFile,
+  ReadDir,
+};
+
+$.DB = {
+  FindOne: async (arg1: any, arg2?: any) => {
+    const plugin = GetCallerPlugin();
+    if (!plugin) {
+      Logger.error('DB unknown error');
+      return null;
+    }
+    return APIFindOne({ name: plugin.identifier, core: false }, arg1, arg2);
+  },
+  Find: async (arg1: any, arg2?: any) => {
+    const plugin = GetCallerPlugin();
+    if (!plugin) {
+      Logger.error('DB unknown error');
+      return [];
+    }
+    return APIFind({ name: plugin.identifier, core: false }, arg1, arg2);
+  },
+  Insert: async (arg1: any, arg2?: any) => {
+    const plugin = GetCallerPlugin();
+    if (!plugin) {
+      Logger.error('DB unknown error');
+      return null;
+    }
+    return APIInsert({ name: plugin.identifier, core: false }, arg1, arg2);
+  },
+  Remove: async (arg1: any, arg2?: any) => {
+    const plugin = GetCallerPlugin();
+    if (!plugin) {
+      Logger.error('DB unknown error');
+      return 0;
+    }
+    return APIRemove({ name: plugin.identifier, core: false }, arg1, arg2);
+  },
+  Update: async (arg1: any, arg2: any, arg3?: any) => {
+    const plugin = GetCallerPlugin();
+    if (!plugin) {
+      Logger.error('DB unknown error');
+      return 0;
+    }
+    return APIUpdate({ name: plugin.identifier, core: false }, arg1, arg2, arg3);
+  },
+  Upsert: async (arg1: any, arg2: any, arg3?: any) => {
+    const plugin = GetCallerPlugin();
+    if (!plugin) {
+      Logger.error('DB unknown error');
+      return 0;
+    }
+    return APIUpsert({ name: plugin.identifier, core: false }, arg1, arg2, arg3);
+  },
+  Count: async (arg1: any, arg2?: any) => {
+    const plugin = GetCallerPlugin();
+    if (!plugin) {
+      Logger.error('DB unknown error');
+      return 0;
+    }
+    return APICount({ name: plugin.identifier, core: false }, arg1, arg2);
+  },
+};
 
 $.U = {
   toXML: dataToXML,
-  WriteFile,
+  parseXML: (xml: string, simplify: boolean = true) => {
+    if (simplify) {
+      return xml2json.parse(xml);
+    } else {
+      return xmlToData(xml);
+    }
+  },
+  GetConfig: (key: string) => {
+    const plugin = GetCallerPlugin();
+    if (!plugin) return undefined;
+    if (!CONFIG[plugin.identifier]) return undefined;
+    return CONFIG[plugin.identifier][key];
+  },
 };
 
 $.R = {
@@ -135,21 +228,22 @@ export function LoadExternalPlugins() {
   const loaded: EamusePlugin[] = [];
 
   try {
-    const plugins = readdirSync(PLUGIN_PATH).filter(fileName =>
-      statSync(path.join(PLUGIN_PATH, fileName)).isDirectory()
-    );
+    const plugins = readdirSync(PLUGIN_PATH, {
+      encoding: 'utf8',
+      withFileTypes: true,
+    }).filter(fileName => fileName.isDirectory());
 
     const instances: { instance: any; name: string }[] = [];
 
-    for (const mod of plugins) {
-      const name = path.basename(mod);
-      const pluginPath = path.resolve(PLUGIN_PATH, mod);
+    for (const dir of plugins) {
+      const name = path.basename(dir.name);
+      const pluginPath = path.resolve(PLUGIN_PATH, dir.name);
 
       if (
-        mod.startsWith('_') ||
-        mod.startsWith('.') ||
-        mod.startsWith('core') ||
-        mod == 'node_modules'
+        dir.name.startsWith('_') ||
+        dir.name.startsWith('.') ||
+        dir.name.startsWith('core') ||
+        dir.name == 'node_modules'
       )
         continue;
 

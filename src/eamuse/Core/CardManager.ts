@@ -35,7 +35,7 @@ cardmng.add('cardmng.inquire', async (info, data, send) => {
     return send.status(112);
   }
 
-  const profile = await FindProfile(card.refid);
+  const profile = await FindProfile(card.__refid);
   if (!profile) {
     await DeleteCard(cid);
     return send.status(112);
@@ -49,11 +49,11 @@ cardmng.add('cardmng.inquire', async (info, data, send) => {
   send.object({
     '@attr': {
       binded: profile.models.indexOf(info.gameCode) >= 0,
-      dataid: card.refid,
+      dataid: card.__refid,
       ecflag: 1,
       expired: 0,
       newflag: 0,
-      refid: card.refid,
+      refid: card.__refid,
     },
   });
 
@@ -67,10 +67,10 @@ cardmng.add('cardmng.getrefid', async (info, data, send) => {
   const card = await FindCard(cid);
   if (card) {
     // Card exists, update profile pin
-    const updated = await UpdateProfile(card.refid, { pin }, true);
+    const updated = await UpdateProfile(card.__refid, { pin }, true);
     if (updated) {
-      await BindProfile(card.refid, info.gameCode);
-      return send.object({ '@attr': { dataid: card.refid, refid: card.refid } });
+      await BindProfile(card.__refid, info.gameCode);
+      return send.object({ '@attr': { dataid: card.__refid, refid: card.__refid } });
     } else {
       return send.deny();
     }
@@ -82,7 +82,7 @@ cardmng.add('cardmng.getrefid', async (info, data, send) => {
     return send.deny();
   }
 
-  const refid = newProfile.refid;
+  const refid = newProfile.__refid;
 
   const newCard = await CreateCard(cid, refid);
   if (!newCard) {

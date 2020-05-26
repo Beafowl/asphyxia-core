@@ -27,21 +27,6 @@ parser.addArgument(['-b', '--bind'], {
   dest: 'bind',
 });
 
-// parser.addArgument(['-uip', '--webui-port'], {
-//   help: 'Set WebUI port. (default: 8084)',
-//   defaultValue: 8084,
-//   type: 'int',
-//   metavar: 'PORT',
-//   dest: 'ui_port',
-// });
-
-// parser.addArgument(['-uib', '--webui-bind'], {
-//   help: 'WebUI Hostname binding. (default: "localhost")',
-//   defaultValue: 'localhost',
-//   metavar: 'HOST',
-//   dest: 'ui_bind',
-// });
-
 parser.addArgument(['-m', '--matching-port'], {
   help: 'Set matching port. (default: 5700)',
   defaultValue: 5700,
@@ -50,23 +35,10 @@ parser.addArgument(['-m', '--matching-port'], {
   metavar: 'PORT',
 });
 
-// parser.addArgument(['-s', '--save-path'], {
-//   help: 'Set custom savedata directory',
-//   dest: 'save_path',
-//   metavar: 'PATH',
-// });
-
-parser.addArgument(['--console'], {
-  help: 'Enable console for plugins.',
+parser.addArgument(['--dev', '--console'], {
+  help: 'Developer mode: Enable console for plugins and data management features',
   defaultValue: false,
   dest: 'dev',
-  action: 'storeTrue',
-});
-
-parser.addArgument(['--no-tray'], {
-  help: 'Disable system tray icon',
-  defaultValue: false,
-  dest: 'no-tray',
   action: 'storeTrue',
 });
 
@@ -172,6 +144,37 @@ export function PluginRegisterConfig(key: string, options: CONFIG_OPTIONS) {
   }
 
   CONFIG_MAP[plugin.identifier].set(key, options);
+  NormalizeConfig(plugin.identifier, key, options);
+}
+
+export function NormalizeConfig(plugin: string, key: string, option: CONFIG_OPTIONS) {
+  let section = INI;
+  if (plugin != 'core') {
+    if (!INI[plugin]) {
+      INI[plugin] = {};
+    }
+    section = INI[plugin];
+  }
+
+  if (section[key] == null) {
+    section[key] = option.default;
+  } else {
+    if (option.type == 'boolean') {
+      section[key] = section[key].toString() == 'true';
+    } else if (option.type == 'integer') {
+      section[key] = parseInt(section[key]);
+      if (isNaN(section[key])) {
+        section[key] = option.default;
+      }
+    } else if (option.type == 'float') {
+      section[key] = parseFloat(section[key]);
+      if (isNaN(section[key])) {
+        section[key] = option.default;
+      }
+    } else {
+      section[key] = section[key].toString();
+    }
+  }
 }
 
 export function ReadConfig() {
@@ -182,36 +185,8 @@ export function ReadConfig() {
     INI = {};
   }
 
-  for (const mod in CONFIG_MAP) {
-    let section = INI;
-    if (mod != 'core') {
-      if (!INI[mod]) {
-        INI[mod] = {};
-      }
-      section = INI[mod];
-    }
-
-    for (const [key, option] of CONFIG_MAP[mod]) {
-      if (section[key] == null) {
-        section[key] = option.default;
-      } else {
-        if (option.type == 'boolean') {
-          section[key] = section[key].toString() == 'true';
-        } else if (option.type == 'integer') {
-          section[key] = parseInt(section[key]);
-          if (isNaN(section[key])) {
-            section[key] = option.default;
-          }
-        } else if (option.type == 'float') {
-          section[key] = parseFloat(section[key]);
-          if (isNaN(section[key])) {
-            section[key] = option.default;
-          }
-        } else {
-          section[key] = section[key].toString();
-        }
-      }
-    }
+  for (const [key, option] of CONFIG_MAP['core']) {
+    NormalizeConfig('core', key, option);
   }
 }
 

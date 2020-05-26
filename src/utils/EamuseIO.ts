@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFile, readFile, readdir, exists } from 'fs';
 
 import { Logger } from './Logger';
 import path from 'path';
@@ -8,6 +8,7 @@ import { compress, decompress } from './SMAZ';
 import hashids from 'hashids/cjs';
 import { NAMES } from './Consts';
 import { CONFIG } from './ArgConfig';
+import { isArray, get } from 'lodash';
 
 const pkg: boolean = (process as any).pkg;
 export const EXEC_PATH = pkg ? path.dirname(process.argv0) : process.cwd();
@@ -19,8 +20,8 @@ export const CONFIG_PATH = path.join(EXEC_PATH, 'config.ini');
 const DB = new nedb({
   filename: SAVE_PATH,
   timestampData: true,
-  afterSerialization: compress,
-  beforeDeserialization: decompress,
+  // afterSerialization: compress,
+  // beforeDeserialization: decompress,
 });
 
 DB.loadDatabase(err => {
@@ -72,6 +73,7 @@ export function GetCallerPlugin(): { name: string; identifier: string } {
     let entryFile = null;
     for (const file of stack) {
       const filename: string = file.getFileName();
+      if (!filename) return null;
       if (filename.startsWith(PLUGIN_PATH)) {
         entryFile = path.relative(PLUGIN_PATH, filename);
         inPlugin = true;
@@ -100,23 +102,6 @@ export function PrepareDirectory(dir: string = ''): string {
   return dir;
 }
 
-export function WriteFile(file: string, data: string) {
-  const plugin = GetCallerPlugin();
-  if (!plugin) return;
-
-  let target = file;
-  if (!path.isAbsolute(file)) {
-    target = path.resolve(PLUGIN_PATH, plugin.identifier, file);
-  }
-
-  try {
-    PrepareDirectory(path.dirname(target));
-    writeFileSync(target, data);
-  } catch (err) {
-    Logger.error(`file writing failed: ${err}`, { plugin: plugin.identifier });
-  }
-}
-
 export function ReadAssets(file: string): any {
   let fullFile = path.join(ASSETS_PATH, `${file}`);
 
@@ -131,6 +116,112 @@ export function ReadAssets(file: string): any {
   } catch (err) {
     return null;
   }
+}
+
+// =========================================
+//                Public IO
+// =========================================
+export function Resolve(file: string) {
+  const plugin = GetCallerPlugin();
+  if (!plugin) return;
+
+  return path.resolve(PLUGIN_PATH, plugin.identifier, file);
+}
+
+export async function Exists(file: string) {
+  const plugin = GetCallerPlugin();
+  if (!plugin) return;
+
+  const target = path.resolve(PLUGIN_PATH, plugin.identifier, file);
+
+  return new Promise<boolean>(resolve => {
+    exists(target, exists => {
+      resolve(exists);
+    });
+  });
+}
+
+export async function ReadDir(file: string) {
+  const plugin = GetCallerPlugin();
+  if (!plugin) return;
+
+  const target = path.resolve(PLUGIN_PATH, plugin.identifier, file);
+
+  return new Promise<{ name: string; type: 'file' | 'dir' | 'unsupported' }[]>(resolve => {
+    readdir(target, { encoding: 'utf8', withFileTypes: true }, (err, files) => {
+      if (err) {
+        Logger.error(`file writing failed: ${err}`, { plugin: plugin.identifier });
+        return resolve([]);
+      }
+      resolve(
+        files.map(file => ({
+          name: file.name,
+          type: file.isFile() ? 'file' : file.isDirectory() ? 'dir' : 'unsupported',
+        }))
+      );
+    });
+  });
+}
+
+export async function WriteFile(
+  file: string,
+  data: string,
+  options: { encoding?: string | null; mode?: number | string; flag?: string } | string | null
+) {
+  const plugin = GetCallerPlugin();
+  if (!plugin) return;
+
+  const target = path.resolve(PLUGIN_PATH, plugin.identifier, file);
+
+  PrepareDirectory(path.dirname(target));
+
+  return new Promise<void>(resolve => {
+    if (options == null) {
+      writeFile(target, data, err => {
+        if (err) {
+          Logger.error(`file writing failed: ${err}`, { plugin: plugin.identifier });
+        }
+        resolve();
+      });
+    } else {
+      writeFile(target, data, options, err => {
+        if (err) {
+          Logger.error(`file writing failed: ${err}`, { plugin: plugin.identifier });
+        }
+        resolve();
+      });
+    }
+  });
+}
+
+export async function ReadFile(
+  file: string,
+  options: { encoding?: string | null; flag?: string } | string | undefined | null
+) {
+  const plugin = GetCallerPlugin();
+  if (!plugin) return;
+
+  const target = path.resolve(PLUGIN_PATH, plugin.identifier, file);
+
+  return new Promise<string | Buffer>(resolve => {
+    if (options == null) {
+      readFile(target, (err, data) => {
+        if (err) {
+          Logger.error(`file reading failed: ${err}`, { plugin: plugin.identifier });
+          return resolve(null);
+        }
+        return resolve(data);
+      });
+    } else {
+      readFile(target, options, (err, data) => {
+        if (err) {
+          Logger.error(`file reading failed: ${err}`, { plugin: plugin.identifier });
+          return resolve(null);
+        }
+        return resolve(data);
+      });
+    }
+  });
 }
 
 // =========================================
@@ -353,7 +444,7 @@ export async function GetProfiles() {
 function CheckQuery(query: any) {
   for (const key in query) {
     if (key.startsWith('__')) {
-      throw new Error('query field can not starts with "__"');
+      throw new Error('query or doc field can not starts with "__"');
     }
 
     if (typeof query[key] == 'object') {
@@ -362,29 +453,52 @@ function CheckQuery(query: any) {
   }
 }
 
-export async function APIFindOne(plugin: string, refid: string | null, query: any) {
-  CheckQuery(query);
-  const sanitized = { ...query };
+function CleanDoc(doc: any) {
+  for (const prop in doc) {
+    if (prop.startsWith('__')) {
+      delete doc[prop];
+    }
+  }
+  return doc;
+}
 
-  if (sanitized.owner) {
-    sanitized.__refid = sanitized.owner;
-    delete sanitized.owner;
+export async function APIFindOne(
+  plugin: { name: string; core: boolean },
+  arg1: string | any,
+  arg2?: any
+) {
+  let query: any = null;
+
+  if (typeof arg1 == 'string' && typeof arg2 == 'object') {
+    CheckQuery(arg2);
+    query = {
+      ...arg2,
+      __reserved_field: 'plugins_profile',
+      __affiliation: plugin.name,
+      __refid: arg1,
+    };
+  } else if (typeof arg1 == 'object') {
+    CheckQuery(arg1);
+    query = {
+      ...arg1,
+      __reserved_field: 'plugins',
+      __affiliation: plugin.name,
+    };
+  } else {
+    throw new Error('invalid FindOne query');
   }
 
   return new Promise<any>((resolve, reject) => {
     DB.findOne(
-      {
-        ...query,
-        __reserved_field: 'plugins',
-        __affiliation: plugin,
-        __refid: owner,
-      },
-      {
-        __reserved_field: 0,
-        __affiliation: 0,
-        __collection: 0,
-        __refid: 0,
-      },
+      query,
+      plugin.core
+        ? {}
+        : {
+            __reserved_field: 0,
+            __affiliation: 0,
+            __collection: 0,
+            __refid: 0,
+          },
       (err, doc) => {
         if (err) reject(err);
         else resolve(doc);
@@ -394,30 +508,50 @@ export async function APIFindOne(plugin: string, refid: string | null, query: an
 }
 
 export async function APIFind(
-  plugin: string,
-  owner: string = 'global',
-  key: string = 'default',
-  query: any = {},
-  sort: any = { createdAt: 1 }
+  plugin: { name: string; core: boolean },
+  arg1: string | any,
+  arg2?: any
 ) {
-  CheckQuery(query);
+  let query: any = null;
+  if (typeof arg1 == 'string' && typeof arg2 == 'object') {
+    CheckQuery(arg2);
+    query = {
+      ...arg2,
+      __reserved_field: 'plugins_profile',
+      __affiliation: plugin.name,
+      __refid: arg1,
+    };
+  } else if (arg1 == null && typeof arg2 == 'object') {
+    CheckQuery(arg2);
+    query = {
+      ...arg2,
+      __reserved_field: 'plugins_profile',
+      __affiliation: plugin.name,
+    };
+  } else if (typeof arg1 == 'object') {
+    CheckQuery(arg1);
+    query = {
+      ...arg1,
+      __reserved_field: 'plugins',
+      __affiliation: plugin.name,
+    };
+  } else {
+    throw new Error('invalid Find query');
+  }
+
   return new Promise<any>((resolve, reject) => {
     DB.find(
-      {
-        ...query,
-        __reserved_field: 'plugins',
-        __affiliation: plugin,
-        __collection: key,
-        __refid: owner,
-      },
-      {
-        __reserved_field: 0,
-        __affiliation: 0,
-        __collection: 0,
-        __refid: 0,
-      }
+      query,
+      plugin.core
+        ? {}
+        : {
+            __reserved_field: 0,
+            __affiliation: 0,
+            __collection: 0,
+            __refid: 0,
+          }
     )
-      .sort(sort)
+      .sort({ createdAt: 1 })
       .exec((err, doc) => {
         if (err) reject(err);
         else resolve(doc);
@@ -425,24 +559,235 @@ export async function APIFind(
   });
 }
 
-export async function APIUpdate(plugin: string, key: string, query: any) {
-  CheckQuery(query);
-  return new Promise<any>((resolve, reject) => {
-    DB.find({
-      ...query,
+export async function APIInsert(
+  plugin: { name: string; core: boolean },
+  arg1: string | any,
+  arg2?: any
+) {
+  let doc: any = null;
+  if (typeof arg1 == 'string' && typeof arg2 == 'object') {
+    CheckQuery(arg2);
+    doc = {
+      ...arg2,
+      __reserved_field: 'plugins_profile',
+      __affiliation: plugin.name,
+      __refid: arg1,
+    };
+  } else if (typeof arg1 == 'object') {
+    CheckQuery(arg1);
+    doc = {
+      ...arg1,
       __reserved_field: 'plugins',
-      __affiliation: plugin,
-      __collection: key,
-    })
-      .projection({
-        __reserved_field: 0,
-        __affiliation: 0,
-        __collection: 0,
-      })
-      .sort({ createdAt: 1 })
-      .exec((err, doc) => {
+      __affiliation: plugin.name,
+    };
+  } else {
+    throw new Error('invalid Insert query');
+  }
+
+  return new Promise<any>((resolve, reject) => {
+    DB.insert(doc, (err, doc) => {
+      if (err) reject(err);
+      else resolve(plugin.core ? doc : CleanDoc(doc));
+    });
+  });
+}
+
+export async function APIUpdate(
+  plugin: { name: string; core: boolean },
+  arg1: string | any,
+  arg2: any,
+  arg3?: any
+) {
+  let query: any = null;
+  let update: any = null;
+  let signiture: any = { __affiliation: plugin.name };
+  if (typeof arg1 == 'string' && typeof arg2 == 'object' && typeof arg3 == 'object') {
+    CheckQuery(arg2);
+    CheckQuery(arg3);
+    query = arg2;
+    update = arg3;
+    signiture.__reserved_field = 'plugins_profile';
+    signiture.__refid = arg1;
+  } else if (arg1 == null && typeof arg2 == 'object' && typeof arg3 == 'object') {
+    CheckQuery(arg2);
+    CheckQuery(arg3);
+    query = arg2;
+    update = arg3;
+    signiture.__reserved_field = 'plugins_profile';
+  } else if (typeof arg1 == 'object' && typeof arg2 == 'object') {
+    CheckQuery(arg1);
+    CheckQuery(arg2);
+    query = arg1;
+    update = arg2;
+    signiture.__reserved_field = 'plugins';
+  } else {
+    throw new Error('invalid Update query');
+  }
+
+  query = { ...query, ...signiture };
+
+  if (!get(Object.keys(update), '0', '').startsWith('$')) {
+    update = {
+      ...update,
+      ...signiture,
+    };
+  }
+
+  return new Promise<any>((resolve, reject) => {
+    DB.update(
+      query,
+      update,
+      { upsert: false, multi: true, returnUpdatedDocs: true },
+      (err, num, docs: any[]) => {
         if (err) reject(err);
-        else resolve(doc);
-      });
+        else
+          resolve({
+            updated: num,
+            docs: isArray(docs)
+              ? docs.map(d => (plugin.core ? d : CleanDoc(d)))
+              : [plugin.core ? docs : CleanDoc(docs)],
+          });
+      }
+    );
+  });
+}
+
+export async function APIUpsert(
+  plugin: { name: string; core: boolean },
+  arg1: string | any,
+  arg2: any,
+  arg3?: any
+) {
+  let query: any = null;
+  let update: any = null;
+  let signiture: any = { __affiliation: plugin.name };
+  if (typeof arg1 == 'string' && typeof arg2 == 'object' && typeof arg3 == 'object') {
+    CheckQuery(arg2);
+    CheckQuery(arg3);
+    query = arg2;
+    update = arg3;
+    signiture.__reserved_field = 'plugins_profile';
+    signiture.__refid = arg1;
+  } else if (arg1 == null && typeof arg2 == 'object' && typeof arg3 == 'object') {
+    CheckQuery(arg2);
+    CheckQuery(arg3);
+    query = arg2;
+    update = arg3;
+    signiture.__reserved_field = 'plugins_profile';
+  } else if (typeof arg1 == 'object' && typeof arg2 == 'object') {
+    CheckQuery(arg1);
+    CheckQuery(arg2);
+    query = arg1;
+    update = arg2;
+    signiture.__reserved_field = 'plugins';
+  } else {
+    throw new Error('invalid Upsert query');
+  }
+
+  query = { ...query, ...signiture };
+
+  if (!get(Object.keys(update), '0', '').startsWith('$')) {
+    update = {
+      ...update,
+      ...signiture,
+    };
+  }
+  return new Promise<any>((resolve, reject) => {
+    DB.update(
+      query,
+      update,
+      { upsert: true, multi: true, returnUpdatedDocs: true },
+      (err: Error, num: number, docs: any[], upsert: boolean = false) => {
+        if (err) reject(err);
+        else
+          resolve({
+            updated: num,
+            docs: isArray(docs)
+              ? docs.map(d => (plugin.core ? d : CleanDoc(d)))
+              : [plugin.core ? docs : CleanDoc(docs)],
+            upsert: upsert ? true : false,
+          });
+      }
+    );
+  });
+}
+
+export async function APIRemove(
+  plugin: { name: string; core: boolean },
+  arg1: string | any,
+  arg2?: any
+) {
+  let query: any = null;
+  if (typeof arg1 == 'string' && typeof arg2 == 'object') {
+    CheckQuery(arg2);
+    query = {
+      ...arg2,
+      __reserved_field: 'plugins_profile',
+      __affiliation: plugin.name,
+      __refid: arg1,
+    };
+  } else if (arg1 == null && typeof arg2 == 'object') {
+    CheckQuery(arg2);
+    query = {
+      ...arg2,
+      __reserved_field: 'plugins_profile',
+      __affiliation: plugin.name,
+    };
+  } else if (typeof arg1 == 'object') {
+    CheckQuery(arg1);
+    query = {
+      ...arg1,
+      __reserved_field: 'plugins',
+      __affiliation: plugin.name,
+    };
+  } else {
+    throw new Error('invalid Remove query');
+  }
+
+  return new Promise<any>((resolve, reject) => {
+    DB.remove(query, { multi: true }, (err, num) => {
+      if (err) reject(err);
+      else resolve(num);
+    });
+  });
+}
+
+export async function APICount(
+  plugin: { name: string; core: boolean },
+  arg1: string | any,
+  arg2?: any
+) {
+  let query: any = null;
+  if (typeof arg1 == 'string' && typeof arg2 == 'object') {
+    CheckQuery(arg2);
+    query = {
+      ...arg2,
+      __reserved_field: 'plugins_profile',
+      __affiliation: plugin.name,
+      __refid: arg1,
+    };
+  } else if (arg1 == null && typeof arg2 == 'object') {
+    CheckQuery(arg2);
+    query = {
+      ...arg2,
+      __reserved_field: 'plugins_profile',
+      __affiliation: plugin.name,
+    };
+  } else if (typeof arg1 == 'object') {
+    CheckQuery(arg1);
+    query = {
+      ...arg1,
+      __reserved_field: 'plugins',
+      __affiliation: plugin.name,
+    };
+  } else {
+    throw new Error('invalid Count query');
+  }
+
+  return new Promise<any>((resolve, reject) => {
+    DB.count(query, (err, num) => {
+      if (err) reject(err);
+      else resolve(num);
+    });
   });
 }
