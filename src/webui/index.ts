@@ -1,11 +1,12 @@
 import { Router, RequestHandler, Request } from 'express';
 import { existsSync, readFileSync } from 'fs';
 import session from 'express-session';
+import cookies from 'cookie-parser';
 import createMemoryStore from 'memorystore';
 import flash from 'connect-flash';
 import { VERSION } from '../utils/Consts';
 import { CONFIG_MAP, CONFIG_DATA, CONFIG, CONFIG_OPTIONS, SaveConfig } from '../utils/ArgConfig';
-import { get } from 'lodash';
+import { get, isEmpty } from 'lodash';
 import { Converter } from 'showdown';
 import {
   ReadAssets,
@@ -21,9 +22,9 @@ import {
   FindCard,
   DeleteCard,
   APIFind,
+  APIRemove,
 } from '../utils/EamuseIO';
 import { urlencoded, json } from 'body-parser';
-import { Logger } from '../utils/Logger';
 import humanize from 'humanize-string';
 import path from 'path';
 import { ROOT_CONTAINER } from '../eamuse/index';
@@ -31,10 +32,28 @@ import { fun } from './fun';
 import { card2nfc, nfc2card, cardType } from '../utils/CardCipher';
 import { groupBy } from 'lodash';
 import { sizeof } from 'sizeof';
+import { emit } from './emit';
 
 const memorystore = createMemoryStore(session);
 
 export const webui = Router();
+webui.use(
+  session({
+    cookie: { maxAge: 300000, sameSite: true },
+    secret: 'c0dedeadc0debeef',
+    resave: true,
+    saveUninitialized: false,
+    store: new memorystore({ checkPeriod: 300000 }),
+  })
+);
+webui.use(cookies());
+
+webui.use(flash());
+let wrap = (fn: RequestHandler) => (...args: any[]) => (fn as any)(...args).catch(args[2]);
+
+webui.use('/fun', fun);
+webui.use('/emit', emit);
+
 const markdown = new Converter({
   headerLevelStart: 3,
   strikethrough: true,
@@ -42,9 +61,10 @@ const markdown = new Converter({
   tasklists: true,
 });
 
-function data(req: Request, title: string, attr?: any) {
+function data(req: Request, title: string, plugin: string, attr?: any) {
   const formOk = req.flash('formOk');
   const formWarn = req.flash('formWarn');
+  const aside = req.cookies.asidemenu == 'true';
 
   let formMessage = null;
   if (formOk.length > 0) {
@@ -55,6 +75,8 @@ function data(req: Request, title: string, attr?: any) {
 
   return {
     title,
+    aside,
+    plugin,
     local: req.ip == '127.0.0.1' || req.ip == '::1',
     version: VERSION,
     formMessage,
@@ -123,20 +145,6 @@ function ConfigData(plugin: string) {
   return config;
 }
 
-webui.use(
-  session({
-    cookie: { maxAge: 300000 },
-    secret: 'c0dedeadc0debeef',
-    resave: true,
-    saveUninitialized: false,
-    store: new memorystore({ checkPeriod: 300000 }),
-  })
-);
-
-webui.use(flash());
-
-let wrap = (fn: RequestHandler) => (...args: any[]) => (fn as any)(...args).catch(args[2]);
-
 webui.get('/favicon.ico', async (req, res) => {
   res.redirect('/static/favicon.ico');
 });
@@ -150,7 +158,7 @@ webui.get(
     const changelog = markdown.makeHtml(ReadAssets('changelog.md'));
 
     const profiles = await GetProfileCount();
-    res.render('index', data(req, 'Dashboard', { memory, config, changelog, profiles }));
+    res.render('index', data(req, 'Dashboard', 'core', { memory, config, changelog, profiles }));
   })
 );
 
@@ -161,7 +169,7 @@ webui.get(
     for (const profile of profiles) {
       profile.cards = await Count({ __reserved_field: 'card', __refid: profile.__refid });
     }
-    res.render('profiles', data(req, 'Profiles', { profiles }));
+    res.render('profiles', data(req, 'Profiles', 'core', { profiles }));
   })
 );
 
@@ -190,7 +198,10 @@ webui.get(
 
     profile.cards = await FindCardsByRefid(refid);
 
-    res.render('profiles_profile', data(req, 'Profiles', { profile, subtitle: profile.name }));
+    res.render(
+      'profiles_profile',
+      data(req, 'Profiles', 'core', { profile, subtitle: profile.name })
+    );
   })
 );
 
@@ -270,7 +281,7 @@ webui.get(
     }
     res.render(
       'data',
-      data(req, 'Data Management', { contributors: Array.from(contributors.values()) })
+      data(req, 'Data Management', 'core', { contributors: Array.from(contributors.values()) })
     );
   })
 );
@@ -284,7 +295,10 @@ webui.get(
         contributors.set(c.name, c);
       }
     }
-    res.render('about', data(req, 'About', { contributors: Array.from(contributors.values()) }));
+    res.render(
+      'about',
+      data(req, 'About', 'core', { contributors: Array.from(contributors.values()) })
+    );
   })
 );
 
@@ -292,14 +306,13 @@ webui.get(
 webui.get(
   '/plugin/:plugin',
   wrap(async (req, res, next) => {
-    const pluginName = req.params['plugin'];
-    const plugin = ROOT_CONTAINER.getPluginByName(pluginName);
+    const plugin = ROOT_CONTAINER.getPluginByName(req.params['plugin']);
 
     if (!plugin) {
       return next();
     }
 
-    const readmePath = path.join(PLUGIN_PATH, pluginName, 'README.md');
+    const readmePath = path.join(PLUGIN_PATH, plugin.Identifier, 'README.md');
     let readme = null;
     try {
       if (existsSync(readmePath)) {
@@ -309,21 +322,69 @@ webui.get(
       readme = null;
     }
 
-    const config = ConfigData(pluginName);
+    const config = ConfigData(plugin.Identifier);
     const contributors = plugin ? plugin.Contributors : [];
     const gameCodes = plugin ? plugin.GameCodes : [];
 
     res.render(
       'plugin',
-      data(req, plugin.Name, {
-        plugin: pluginName,
+      data(req, plugin.Name, plugin.Identifier, {
         readme,
         config,
         contributors,
         gameCodes,
         subtitle: 'Overview',
+        subidentifier: 'overview',
       })
     );
+  })
+);
+
+webui.delete(
+  '/plugin/:plugin/profile/:refid',
+  wrap(async (req, res) => {
+    const plugin = ROOT_CONTAINER.getPluginByName(req.params['plugin']);
+
+    if (!plugin) {
+      return res.sendStatus(404);
+    }
+
+    const refid = req.params['refid'];
+    if (!refid || refid.length < 0) {
+      return res.sendStatus(400);
+    }
+
+    if (await APIRemove({ name: plugin.Identifier, core: true }, refid, {})) {
+      return res.sendStatus(200);
+    } else {
+      return res.sendStatus(404);
+    }
+  })
+);
+
+// Plugin statics
+webui.get(
+  '/plugin/:plugin/static/*',
+  wrap(async (req, res, next) => {
+    const data = req.params[0];
+
+    if (data.startsWith('.')) {
+      return next();
+    }
+
+    const plugin = ROOT_CONTAINER.getPluginByName(req.params['plugin']);
+
+    if (!plugin) {
+      return next();
+    }
+
+    const file = path.join(PLUGIN_PATH, plugin.Identifier, 'webui', data);
+
+    res.sendFile(file, {}, err => {
+      if (err) {
+        next();
+      }
+    });
   })
 );
 
@@ -331,8 +392,7 @@ webui.get(
 webui.get(
   '/plugin/:plugin/profiles',
   wrap(async (req, res, next) => {
-    const pluginName = req.params['plugin'];
-    const plugin = ROOT_CONTAINER.getPluginByName(pluginName);
+    const plugin = ROOT_CONTAINER.getPluginByName(req.params['plugin']);
 
     if (!plugin) {
       return next();
@@ -363,7 +423,11 @@ webui.get(
 
     res.render(
       'plugin_profiles',
-      data(req, plugin.Name, { plugin: pluginName, subtitle: 'Profiles', profiles: profileData })
+      data(req, plugin.Name, plugin.Identifier, {
+        subtitle: 'Profiles',
+        subidentifier: 'profiles',
+        profiles: profileData,
+      })
     );
   })
 );
@@ -372,8 +436,7 @@ webui.get(
 webui.get(
   '/plugin/:plugin/profile',
   wrap(async (req, res, next) => {
-    const pluginName = req.params['plugin'];
-    const plugin = ROOT_CONTAINER.getPluginByName(pluginName);
+    const plugin = ROOT_CONTAINER.getPluginByName(req.params['plugin']);
 
     if (!plugin) {
       return next();
@@ -391,7 +454,7 @@ webui.get(
     if (pageName == null) {
       page = plugin.FirstProfilePage;
     } else {
-      page = pageName.toString();
+      page = `profile_${pageName.toString()}`;
     }
 
     const content = await plugin.render(page, refid.toString());
@@ -399,9 +462,19 @@ webui.get(
       return next();
     }
 
+    const tabs = plugin.ProfilePages.map(p => ({ name: humanize(p.substr(8)), link: p.substr(8) }));
+
     res.render(
-      'custom',
-      data(req, plugin.Name, { content, subtitle: 'Profiles', plugin: pluginName })
+      'custom_profile',
+      data(req, plugin.Name, plugin.Identifier, {
+        content,
+        tabs,
+        subtitle: 'Profiles',
+        subidentifier: 'profiles',
+        subsubtitle: humanize(page.substr(8)),
+        subsubidentifier: page.substr(8),
+        refid: refid.toString(),
+      })
     );
   })
 );
@@ -410,8 +483,7 @@ webui.get(
 webui.get(
   '/plugin/:plugin/:page',
   wrap(async (req, res, next) => {
-    const pluginName = req.params['plugin'];
-    const plugin = ROOT_CONTAINER.getPluginByName(pluginName);
+    const plugin = ROOT_CONTAINER.getPluginByName(req.params['plugin']);
 
     if (!plugin) {
       return next();
@@ -426,7 +498,11 @@ webui.get(
 
     res.render(
       'custom',
-      data(req, plugin.Name, { content, subtitle: humanize(pageName), plugin: pluginName })
+      data(req, plugin.Name, plugin.Identifier, {
+        content,
+        subtitle: humanize(pageName),
+        subidentifier: pageName,
+      })
     );
   })
 );
@@ -437,6 +513,12 @@ webui.post(
   urlencoded({ extended: true }),
   wrap(async (req, res) => {
     const page = req.query.page;
+
+    if (isEmpty(req.body)) {
+      res.sendStatus(400);
+      return;
+    }
+
     let plugin: string = null;
     if (req.path == '/') {
       plugin = 'core';
@@ -485,12 +567,6 @@ webui.post(
 
         if (current !== configData[key]) {
           if (!validate(config, configData[key])) {
-            if (config.onchange) {
-              config.onchange(key, configData[key]).catch(err => {
-                Logger.error(err, { plugin });
-              });
-            }
-
             if (config.needRestart) {
               needRestart = true;
             }
@@ -511,14 +587,12 @@ webui.post(
   })
 );
 
-webui.use('/fun', fun);
-
 // 404
 webui.use(async (req, res, next) => {
-  return res.status(404).render('404', data(req, '404 - Are you lost?'));
+  return res.status(404).render('404', data(req, '404 - Are you lost?', 'core'));
 });
 
 // 500 - Any server error
 webui.use((err: any, req: any, res: any, next: any) => {
-  return res.status(500).render('500', data(req, '500 - Oops', { err }));
+  return res.status(500).render('500', data(req, '500 - Oops', 'core', { err }));
 });

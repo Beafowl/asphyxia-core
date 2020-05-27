@@ -4,7 +4,7 @@ block content
   if profiles.length > 0
     .columns.is-multiline
       each profile in profiles
-        .column.is-one-half
+        .column.is-half
           .card
             header.card-header
               p.card-header-title
@@ -34,7 +34,7 @@ block content
                   span.icon.is-small
                     i.mdi.mdi-account-edit
                   span Edit
-                button.button.is-danger.is-outlined
+                button.button.is-danger.is-outlined.jb-modal.profile-delete(data-target="confirm-modal" deleting=profile.refid deleting-name=profile.coreProfile.name)
                   span.icon.is-small
                     i.mdi.mdi-trash-can
                   span Delete

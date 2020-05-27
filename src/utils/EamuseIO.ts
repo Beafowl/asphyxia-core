@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFile, readFile, readdir, exists } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFile, readFile, readdir } from 'fs';
 
 import { Logger } from './Logger';
 import path from 'path';
@@ -20,8 +20,8 @@ export const CONFIG_PATH = path.join(EXEC_PATH, 'config.ini');
 const DB = new nedb({
   filename: SAVE_PATH,
   timestampData: true,
-  // afterSerialization: compress,
-  // beforeDeserialization: decompress,
+  afterSerialization: compress,
+  beforeDeserialization: decompress,
 });
 
 DB.loadDatabase(err => {
@@ -126,19 +126,6 @@ export function Resolve(file: string) {
   if (!plugin) return;
 
   return path.resolve(PLUGIN_PATH, plugin.identifier, file);
-}
-
-export async function Exists(file: string) {
-  const plugin = GetCallerPlugin();
-  if (!plugin) return;
-
-  const target = path.resolve(PLUGIN_PATH, plugin.identifier, file);
-
-  return new Promise<boolean>(resolve => {
-    exists(target, exists => {
-      resolve(exists);
-    });
-  });
 }
 
 export async function ReadDir(file: string) {
@@ -455,7 +442,7 @@ function CheckQuery(query: any) {
 
 function CleanDoc(doc: any) {
   for (const prop in doc) {
-    if (prop.startsWith('__')) {
+    if (prop.startsWith('__') && prop != '__refid') {
       delete doc[prop];
     }
   }
@@ -567,6 +554,13 @@ export async function APIInsert(
   let doc: any = null;
   if (typeof arg1 == 'string' && typeof arg2 == 'object') {
     CheckQuery(arg2);
+    if (!plugin.core) {
+      const profile = await FindProfile(arg1);
+      if (profile == null) {
+        Logger.warn('refid does not exists, insert operation canceled', { plugin: plugin.name });
+        return null;
+      }
+    }
     doc = {
       ...arg2,
       __reserved_field: 'plugins_profile',
@@ -664,6 +658,13 @@ export async function APIUpsert(
   if (typeof arg1 == 'string' && typeof arg2 == 'object' && typeof arg3 == 'object') {
     CheckQuery(arg2);
     CheckQuery(arg3);
+    if (!plugin.core) {
+      const profile = await FindProfile(arg1);
+      if (profile == null) {
+        Logger.warn('refid does not exists, insert operation canceled', { plugin: plugin.name });
+        return null;
+      }
+    }
     query = arg2;
     update = arg3;
     signiture.__reserved_field = 'plugins_profile';

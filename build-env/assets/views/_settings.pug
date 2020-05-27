@@ -52,6 +52,7 @@ mixin form(name, options)
         | #{name}
     .card-content
       form(method='post')
+        input(type="hidden" name="__is_plugin" value="yes")
         each option in options
           +form_control(option)
         .field.is-grouped

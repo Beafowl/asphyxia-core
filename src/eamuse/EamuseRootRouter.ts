@@ -66,8 +66,8 @@ export class EamuseRootRouter {
     return this.pluginMap[gameCode];
   }
 
-  public getPluginByName(gameCode: string) {
-    return this.pluginMapID[gameCode];
+  public getPluginByName(name: string) {
+    return this.pluginMapID[name];
   }
 
   public get Plugins() {

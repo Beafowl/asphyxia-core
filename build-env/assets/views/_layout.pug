@@ -1,7 +1,7 @@
 doctype html
 mixin li_menu_item(icon, label, link)
   li
-    a.has-icon(class=((title == label) ? 'is-active' : '') href=link)
+    a.has-icon(class=((title == label && plugin == 'core') ? 'is-active' : '') href=link)
       span.icon
         i.mdi(class='mdi-'+icon)
       span.menu-item-label #{label}
@@ -19,14 +19,14 @@ mixin li_plugin(icon, label, link, pages)
           i.mdi.mdi-minus
     ul
       li
-        a(href=`/plugin/${link}` class=(((title == label) && (subtitle == 'Overview')) ? 'is-active' : ''))
+        a(href=`/plugin/${link}` class=(((plugin == link) && (subidentifier == 'overview')) ? 'is-active' : ''))
           span Overview
-        a(href=`/plugin/${link}/profiles` class=(((title == label) && (subtitle == 'Profiles')) ? 'is-active' : ''))
+        a(href=`/plugin/${link}/profiles` class=(((plugin == link) && (subidentifier == 'profiles')) ? 'is-active' : ''))
           span Profiles
         each page in pages
-          a(href=`/plugin/${link}/${page.link}` class=(((title == label) && (subtitle == page.name)) ? 'is-active' : ''))
+          a(href=`/plugin/${link}/${page.link}` class=(((plugin == link) && (subidentifier == page.link)) ? 'is-active' : ''))
             span #{page.name}
-html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-expanded
+html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-expanded(class=aside ? 'has-aside-mobile-expanded' : '')
   head
     meta(charset="utf-8")
     meta(http-equiv="X-UA-Compatible", content="ie=edge")
@@ -45,6 +45,7 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
     script(type="text/javascript" src="/static/js/jquery-3.5.1.min.js")
     script(type="text/javascript" src="/static/js/jdenticon-2.2.0.min.js")
     script(type="text/javascript" src="/static/js/geopattern.min.js")
+    script(type="text/javascript" src="/static/js/js.cookie-2.2.1.min.js")
     block head
   body
     #app
@@ -52,7 +53,7 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
         .navbar-brand
           a.navbar-item.is-hidden-desktop.jb-aside-mobile-toggle
             span.icon
-              i.mdi.mdi-forwardburger.mdi-24px
+              i.mdi.mdi-24px
           .navbar-item
             .image.is-24x24.logo
               img(src="/static/img/logo.png")
@@ -113,6 +114,12 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
                   span.is-size-6.has-text-grey-light &gt;
                   | 
                   span.has-text-grey #{subtitle}
+              if subsubtitle
+                span.subtitle
+                  | 
+                  span.is-size-6.has-text-grey-light &gt;
+                  | 
+                  span.has-text-grey #{subsubtitle}
           
         section.section.is-main-section
           block content

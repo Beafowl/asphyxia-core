@@ -288,3 +288,11 @@ a.tag.is-dark:hover {
   animation-duration: 3s;
   animation-timing-function: ease-out;
 }
+
+.jb-aside-mobile-toggle > span > i::before {
+  content: '\F0D75';
+}
+
+.has-aside-mobile-expanded .jb-aside-mobile-toggle > span > i::before {
+  content: '\F006D';
+}

@@ -50,7 +50,6 @@ export interface CONFIG_OPTIONS {
   type: 'string' | 'integer' | 'float' | 'boolean';
   range?: [number, number];
   validator?: (data: string) => true | string;
-  onchange?: (key: string, value: string) => Promise<void>;
   options?: string[];
   needRestart?: boolean;
   default: any;

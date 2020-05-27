@@ -88,6 +88,9 @@ export class EamusePlugin {
 
   private uiPages: string[];
   private uiProfiles: string[];
+  private uiEvents: {
+    [event: string]: (data: any) => void | Promise<void>;
+  };
   private uiCache: {
     [file: string]: {
       props: { [field: string]: string };
@@ -106,6 +109,7 @@ export class EamusePlugin {
     this.uiPages = [];
     this.uiProfiles = [];
     this.uiCache = {};
+    this.uiEvents = {};
     const webuiPath = path.join(PLUGIN_PATH, folderName, 'webui');
     try {
       const files = readdirSync(webuiPath, { encoding: 'utf8', withFileTypes: true }).filter(
@@ -114,7 +118,8 @@ export class EamusePlugin {
           file.name.endsWith('.pug') &&
           !file.name.startsWith('_') &&
           file.name != 'profiles.pug' &&
-          file.name != 'profile.pug'
+          file.name != 'profile.pug' &&
+          file.name != 'static.pug'
       );
       this.uiPages = files
         .filter(f => !f.name.startsWith('profile_'))
@@ -191,6 +196,18 @@ export class EamusePlugin {
 
   public RegisterRoute(method: string, route?: boolean | EamuseRouteHandler) {
     this.routes[method] = route;
+  }
+
+  public RegisterWebUIEvent(event: string, callback: (data: any) => void | Promise<void>) {
+    this.uiEvents[event] = callback;
+  }
+
+  public async CallEvent(event: string, data: any) {
+    if (this.uiEvents[event]) {
+      await this.uiEvents[event](data);
+    } else {
+      Logger.warn(`event "${event}" does not exists`, { plugin: this.pluginIdentifier });
+    }
   }
 
   public RegisterUnhandled(handler?: EamuseRouteHandler) {

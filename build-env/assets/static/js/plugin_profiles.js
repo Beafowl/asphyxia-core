@@ -2,9 +2,10 @@
 (() => {
   let deleting = null;
   $('.profile-delete').on('click', e => {
+    console.log('fuck');
     deleting = e.currentTarget.getAttribute('deleting');
     const name = e.currentTarget.getAttribute('deleting-name');
-    $('#confirm-modal-title').text(`Deleting ${name}`);
+    $('#confirm-modal-title').text(`Deleting plugin data for ${name}`);
   });
 
   $('#confirm-delete').on('click', _ => {
@@ -12,7 +13,7 @@
       location.reload(true);
     }
     axios
-      .delete(`/profile/${deleting}`)
+      .delete(`profile/${deleting}`)
       .then(response => {
         location.reload(true);
       })

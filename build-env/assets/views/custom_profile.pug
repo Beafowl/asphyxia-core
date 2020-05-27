@@ -1,0 +1,17 @@
+extends _layout.pug
+
+block content
+  if tabs.length > 1
+    .tabs.is-toggle.is-paddingless
+      ul.is-marginless
+        each tab in tabs
+          if (subsubidentifier == tab.link)
+            li.is-active
+              a(href=`/plugin/${plugin}/profile?refid=${refid}&page=${tab.link}`) #{tab.name}
+          else
+            li
+              a.has-background-white(href=`/plugin/${plugin}/profile?refid=${refid}&page=${tab.link}`) #{tab.name}
+  | !{content}
+
+block scripts
+  script var refid = "#{refid}";

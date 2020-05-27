@@ -18,7 +18,6 @@ import { KDataReader } from '../utils/KDataReader';
 import {
   PLUGIN_PATH,
   Resolve,
-  Exists,
   WriteFile,
   ReadFile,
   ReadDir,
@@ -75,7 +74,6 @@ $.K = {
 
 $.IO = {
   Resolve,
-  Exists,
   WriteFile,
   ReadFile,
   ReadDir,
@@ -163,6 +161,7 @@ $.R = {
   Unhandled: () => {},
   Contributor: () => {},
   Config: () => {},
+  WebUIEvent: () => {},
 };
 
 function EnableRegisterNamespace(plugin: EamusePlugin) {
@@ -178,6 +177,9 @@ function EnableRegisterNamespace(plugin: EamusePlugin) {
   $.R.Contributor = (name: string, link?: string) => {
     plugin.RegisterContributor(name, link);
   };
+  $.R.WebUIEvent = (event: string, callback: (data: any) => void | Promise<void>) => {
+    plugin.RegisterWebUIEvent(event, callback);
+  };
   $.R.Config = PluginRegisterConfig;
 }
 
@@ -187,6 +189,7 @@ function DisableRegisterNamespace() {
   $.R.Unhandled = () => {};
   $.R.Contributor = () => {};
   $.R.Config = () => {};
+  $.R.WebUIEvent = () => {};
 }
 
 if (!ARGS.dev) {
