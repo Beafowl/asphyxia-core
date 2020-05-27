@@ -7,7 +7,7 @@ import { GetCallerPlugin, PLUGIN_PATH } from '../utils/EamuseIO';
 import { Logger } from '../utils/Logger';
 
 import { render as ejs, compile as ejsCompile } from 'ejs';
-import { render as pug, compileFile as pugCompileFile } from 'pug';
+import { compile as pugCompile, compileFile as pugCompileFile } from 'pug';
 import path from 'path';
 import { EABody } from '../middlewares/EamuseMiddleware';
 import chalk from 'chalk';
@@ -117,7 +117,8 @@ export class EamuseSend {
     }
 
     try {
-      const result = xmlToData(pug(template, data));
+      const fn = pugCompile(template, { doctype: 'xml' });
+      const result = xmlToData(fn(data));
 
       const keys = Object.keys(result);
       if (keys.length <= 0) return this.object({}, options);
@@ -160,7 +161,7 @@ export class EamuseSend {
 
     try {
       const filePath = path.join(PLUGIN_PATH, plugin.identifier, template);
-      const fn = pugCompileFile(filePath);
+      const fn = pugCompileFile(filePath, { doctype: 'xml' });
       const result = xmlToData(fn(data));
 
       const keys = Object.keys(result);

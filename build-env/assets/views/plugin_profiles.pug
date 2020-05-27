@@ -30,10 +30,11 @@ block content
                     p.heading Data Usage
                     p.subtitle #{profile.dataSize}
               .buttons.is-right
-                a.button.is-primary(href=`/plugin/${plugin}/profile?refid=${profile.refid}`)
-                  span.icon.is-small
-                    i.mdi.mdi-account-edit
-                  span Edit
+                if hasCustomPage
+                  a.button.is-primary(href=`/plugin/${plugin}/profile?refid=${profile.refid}`)
+                    span.icon.is-small
+                      i.mdi.mdi-account-edit
+                    span Detail
                 button.button.is-danger.is-outlined.jb-modal.profile-delete(data-target="confirm-modal" deleting=profile.refid deleting-name=profile.coreProfile.name)
                   span.icon.is-small
                     i.mdi.mdi-trash-can

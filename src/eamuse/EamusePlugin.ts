@@ -295,7 +295,13 @@ export class EamusePlugin {
       return true;
     }
 
-    handler(info, sanitized, send);
+    try {
+      await handler(info, sanitized, send);
+    } catch (err) {
+      Logger.error(err, { plugin: this.pluginIdentifier });
+      return false;
+    }
+
     return true;
   }
 

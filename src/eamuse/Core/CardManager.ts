@@ -1,5 +1,6 @@
 import { EamuseRouteContainer } from '../EamuseRouteContainer';
 import { get } from 'lodash';
+import { ROOT_CONTAINER } from '../index';
 import {
   FindCard,
   GetProfileCount,
@@ -9,13 +10,21 @@ import {
   DeleteCard,
   CreateCard,
   UpdateProfile,
+  APIFindOne,
 } from '../../utils/EamuseIO';
 
 export const cardmng = new EamuseRouteContainer();
 
-// const CARD_CACHE: {
-//   [cid: string]: string;
-// } = {};
+async function CheckProfile(gameCode: string, refid: string) {
+  const plugins = ROOT_CONTAINER.getPluginByCode(gameCode);
+  for (const plugin of plugins) {
+    const profile = await APIFindOne({ name: plugin.Identifier, core: true }, refid, {});
+    if (profile != null) {
+      return true;
+    }
+  }
+  return false;
+}
 
 cardmng.add('cardmng.inquire', async (info, data, send) => {
   const cid: string = get(data, '@attr.cardid');
@@ -48,7 +57,7 @@ cardmng.add('cardmng.inquire', async (info, data, send) => {
 
   send.object({
     '@attr': {
-      binded: profile.models.indexOf(info.gameCode) >= 0,
+      binded: (await CheckProfile(info.gameCode, card.__refid)) ? 1 : 0,
       dataid: card.__refid,
       ecflag: 1,
       expired: 0,

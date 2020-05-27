@@ -426,6 +426,7 @@ webui.get(
       data(req, plugin.Name, plugin.Identifier, {
         subtitle: 'Profiles',
         subidentifier: 'profiles',
+        hasCustomPage: plugin.FirstProfilePage != null,
         profiles: profileData,
       })
     );

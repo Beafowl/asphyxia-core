@@ -58,7 +58,7 @@ export class EamuseRootRouter {
       if (success) return;
     }
 
-    await send.deny();
+    send.deny();
     return;
   }
 

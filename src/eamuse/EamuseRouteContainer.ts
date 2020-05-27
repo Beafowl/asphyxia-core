@@ -45,7 +45,7 @@ export class EamuseRouteContainer {
     }
 
     if (typeof handler === 'boolean') {
-      handler ? await send.success() : await send.deny();
+      handler ? send.success() : send.deny();
       return true;
     }
 
