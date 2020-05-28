@@ -1,5 +1,6 @@
 import winston from 'winston';
 import chalk from 'chalk';
+import { ARGS } from './ArgConfig';
 
 const isDebug = (process as any).pkg == null;
 
@@ -8,15 +9,22 @@ export const Logger = winston.createLogger({
   format: winston.format.combine(
     winston.format.colorize(),
     winston.format.printf(info => {
+      let stack = '';
+      if (info.stack) {
+        stack += `\n${info.stack}`;
+      } else if ((info.message as any).stack) {
+        stack += `\n${(info.message as any).stack}`;
+      }
+
       const plugin =
         info.plugin == 'core' ? chalk.cyanBright('core') : chalk.yellowBright(info.plugin);
       if (info.level.indexOf('info') < 0) {
-        return `  [${plugin}] ${info.level}: ${info.message}`;
+        return `  [${plugin}] ${info.level}: ${info.message}` + stack;
       } else {
         if (info.plugin == 'core') {
           return `${info.message}`;
         }
-        return `  [${plugin}] ${info.message}`;
+        return `  [${plugin}] ${info.message}` + stack;
       }
     })
   ),

@@ -1,4 +1,5 @@
 extends _layout.pug
+include _delete.pug
 
 block content
   - var dateformat = { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' };
@@ -33,7 +34,7 @@ block content
                       a.button.is-primary(href=`/profile/${profile.__refid}` data-tooltip="Edit")
                         span.icon
                           i.mdi.mdi-account-edit.mdi-18px
-                      a.button.is-danger.jb-modal.profile-delete(data-target="confirm-modal" deleting=profile.__refid deleting-name=profile.name data-tooltip="Delete")
+                      a.button.is-danger.jb-modal.data-delete-button(data-target="confirm-modal" deleting=profile.__refid deleting-name=profile.name data-tooltip="Delete")
                         span.icon
                           i.mdi.mdi-trash-can.mdi-18px
       else
@@ -43,23 +44,9 @@ block content
               span.icon.is-large
                 i.mdi.mdi-emoticon-happy.mdi-48px
             p Nothing's here yet. Let's play!
-  
-  .modal#confirm-modal
-    .modal-background.jb-modal-close
-    .modal-card
-      header.modal-card-head
-        span.icon.has-text-danger
-          i.mdi.mdi-alert.mdi-18px
-        p.modal-card-title.has-text-weight-semibold#confirm-modal-title Deleting
-      section.modal-card-body
-        p
-          b Are you sure?
-        p Deleting the profile will delete all game data associated with this profile (including scores).
-        p You will not be able to undo this action.
-      footer.modal-card-foot
-        button.button.jb-modal-close Cancel
-        button.button.is-danger#confirm-delete Delete
-    button.modal-close.is-large.jb-modal-close
 
-block scripts
-  script(type="text/javascript" src="/static/js/profiles.js")
+  +confirm("Deleting profile", "/profile/")
+    p
+      b Are you sure?
+    p Deleting the profile will delete all game data associated with this profile (including scores).
+    p You will not be able to undo this action.

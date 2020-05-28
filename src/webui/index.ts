@@ -23,6 +23,7 @@ import {
   DeleteCard,
   APIFind,
   APIRemove,
+  PluginStats,
 } from '../utils/EamuseIO';
 import { urlencoded, json } from 'body-parser';
 import humanize from 'humanize-string';
@@ -279,10 +280,10 @@ webui.get(
         contributors.set(c.name, c);
       }
     }
-    res.render(
-      'data',
-      data(req, 'Data Management', 'core', { contributors: Array.from(contributors.values()) })
-    );
+
+    const pluginStats = await PluginStats();
+
+    res.render('data', data(req, 'Data Management', 'core', { pluginStats }));
   })
 );
 

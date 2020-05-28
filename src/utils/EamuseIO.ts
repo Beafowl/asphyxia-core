@@ -8,7 +8,8 @@ import { compress, decompress } from './SMAZ';
 import hashids from 'hashids/cjs';
 import { NAMES } from './Consts';
 import { CONFIG } from './ArgConfig';
-import { isArray, get } from 'lodash';
+import { isArray, get, groupBy } from 'lodash';
+import { sizeof } from 'sizeof';
 
 const pkg: boolean = (process as any).pkg;
 export const EXEC_PATH = pkg ? path.dirname(process.argv0) : process.cwd();
@@ -237,6 +238,36 @@ export async function GetUniqueInt() {
         );
       }
     );
+  });
+}
+
+export async function PluginStats() {
+  return new Promise<
+    {
+      name: string;
+      id: string;
+      dataSize: string;
+    }[]
+  >(resolve => {
+    DB.find({
+      __reserved_field: { $in: ['plugins', 'plugins_profile'] },
+    }).exec((err, res) => {
+      if (err) {
+        resolve([]);
+        return;
+      }
+
+      const group = groupBy(res, '__affiliation');
+      const stats = [];
+      for (const plugin of Object.keys(group).sort()) {
+        stats.push({
+          name: plugin.split('@')[0].toUpperCase(),
+          id: plugin,
+          dataSize: sizeof(group[plugin], true),
+        });
+      }
+      resolve(stats);
+    });
   });
 }
 

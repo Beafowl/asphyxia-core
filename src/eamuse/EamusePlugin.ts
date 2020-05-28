@@ -17,8 +17,11 @@ import {
 import { compile } from 'pug';
 import { CONFIG } from '../utils/ArgConfig';
 
-async function cardToRef(gameCode: string, str: string, refMap: any): Promise<string> {
+async function refmap(gameCode: string, str: string, refMap: any): Promise<string> {
   const regex = /(^|\s*)([0|E][A-F|a-f|0-9]{15})($|\s+)/g;
+  if (typeof str !== 'string') {
+    return str;
+  }
   for (const match of str.matchAll(regex)) {
     const cid = match[2];
 
@@ -43,30 +46,32 @@ async function cardToRef(gameCode: string, str: string, refMap: any): Promise<st
   });
 }
 
-async function removeCardID(gameCode: string, data: any, refMap: any = {}) {
+async function sanitization(gameCode: string, data: any, refMap: any = {}) {
   if (typeof data !== 'object') return undefined;
 
   if (Array.isArray(data)) {
     for (const element of data) {
-      await removeCardID(gameCode, element, refMap);
+      await sanitization(gameCode, element, refMap);
     }
   } else {
     for (const prop in data) {
       if (prop == '@attr') {
         for (const attr in data[prop]) {
-          const refid = await cardToRef(gameCode, data[prop][attr], refMap);
-          if (!refid) return null;
-          data['@attr'][attr] = refid;
+          if (typeof data[prop][attr] == 'string') {
+            const refid = await refmap(gameCode, data[prop][attr], refMap);
+            if (!refid) return null;
+            data['@attr'][attr] = refid;
+          }
         }
       } else if (prop == '@content') {
         const content = data['@content'];
         if (typeof content == 'string') {
-          const refid = await cardToRef(gameCode, content, refMap);
+          const refid = await refmap(gameCode, content, refMap);
           if (!refid) return null;
           data['@content'] = refid;
         }
       } else {
-        await removeCardID(gameCode, data[prop], refMap);
+        await sanitization(gameCode, data[prop], refMap);
       }
     }
   }
@@ -274,7 +279,7 @@ export class EamusePlugin {
   ): Promise<boolean> {
     let handler = this.routes[`${moduleName}.${method}`];
 
-    const sanitized = await removeCardID(info.gameCode, data);
+    const sanitized = await sanitization(info.gameCode, data);
     if (!sanitized) {
       return false;
     }

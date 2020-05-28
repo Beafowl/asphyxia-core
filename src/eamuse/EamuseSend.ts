@@ -12,6 +12,7 @@ import path from 'path';
 import { EABody } from '../middlewares/EamuseMiddleware';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
+import { EamusePlugin } from './EamusePlugin';
 
 export interface EamuseSendOption {
   status?: number;
@@ -32,7 +33,29 @@ export class EamuseSend {
     this.res = res;
   }
 
-  object(content: any = {}, options: EamuseSendOption = {}) {
+  private _safe_xml(
+    result: any,
+    options: EamuseSendOption = {},
+    plugin?: ReturnType<typeof GetCallerPlugin>
+  ) {
+    if (result != null) {
+      const keys = Object.keys(result);
+      if (keys.length <= 0) return this.object({}, options);
+      const rootName = keys[0];
+      return this.object(result[rootName], { rootName, ...options }, plugin);
+    }
+    return this.object({}, { status: 1 });
+  }
+
+  object(
+    content: any = {},
+    options: EamuseSendOption = {},
+    plugin?: ReturnType<typeof GetCallerPlugin>
+  ) {
+    if (!plugin) {
+      plugin = GetCallerPlugin();
+    }
+
     if (this.sent) {
       Logger.warn(
         `duplicated send operation from ${chalk.yellowBright(
@@ -40,8 +63,6 @@ export class EamuseSend {
         )}`
       );
       return;
-    } else {
-      this.sent = true;
     }
 
     const encoding = defaultTo(options.encoding, this.body.encoding);
@@ -59,7 +80,13 @@ export class EamuseSend {
     let data = null;
 
     if (kencoded) {
-      data = kencode(result, encoding, true);
+      try {
+        data = kencode(result, encoding, true);
+      } catch (err) {
+        Logger.error(new Error('kencode failed') as any, { plugin: plugin.identifier });
+        this.object({}, { status: 1 }, plugin);
+        return;
+      }
     } else {
       data = dataToXMLBuffer(result, encoding);
     }
@@ -81,12 +108,12 @@ export class EamuseSend {
       data = key.encrypt(data);
     }
 
-    const plugin = GetCallerPlugin();
     if (plugin) {
       this.res.setHeader('X-CORE-Plugin', plugin.identifier);
     }
 
     this.res.send(data);
+    this.sent = true;
   }
 
   xml(template: string, data?: any, options?: EamuseSendOption) {
@@ -96,16 +123,13 @@ export class EamuseSend {
       return this.object({}, { status: 1 });
     }
 
+    let result = null;
     try {
-      const result = xmlToData(ejs(template, data));
-
-      const keys = Object.keys(result);
-      if (keys.length <= 0) return this.object({}, options);
-      const rootName = keys[0];
-      return this.object(result[rootName], { rootName, ...options });
+      result = xmlToData(ejs(template, data));
     } catch (err) {
       Logger.error(err, { plugin: plugin.identifier });
-      return this.object({}, { status: 1 });
+    } finally {
+      return this._safe_xml(result, options, plugin);
     }
   }
 
@@ -116,17 +140,14 @@ export class EamuseSend {
       return this.object({}, { status: 1 });
     }
 
+    let result = null;
     try {
       const fn = pugCompile(template, { doctype: 'xml' });
-      const result = xmlToData(fn(data));
-
-      const keys = Object.keys(result);
-      if (keys.length <= 0) return this.object({}, options);
-      const rootName = keys[0];
-      return this.object(result[rootName], { rootName, ...options });
+      result = xmlToData(fn(data));
     } catch (err) {
       Logger.error(err, { plugin: plugin.identifier });
-      return this.object({}, { status: 1 });
+    } finally {
+      return this._safe_xml(result, options, plugin);
     }
   }
 
@@ -137,18 +158,15 @@ export class EamuseSend {
       return this.object({}, { status: 1 });
     }
 
+    let result = null;
     try {
       const filePath = path.join(PLUGIN_PATH, plugin.identifier, template);
       const fn = ejsCompile(readFileSync(filePath, { encoding: 'utf8' }));
-      const result = xmlToData(fn(data));
-
-      const keys = Object.keys(result);
-      if (keys.length <= 0) return this.object({}, options);
-      const rootName = keys[0];
-      return this.object(result[rootName], { rootName, ...options });
+      result = xmlToData(fn(data));
     } catch (err) {
       Logger.error(err, { plugin: plugin.identifier });
-      return this.object({}, { status: 1 });
+    } finally {
+      return this._safe_xml(result, options, plugin);
     }
   }
 
@@ -159,20 +177,18 @@ export class EamuseSend {
       return this.object({}, { status: 1 });
     }
 
+    let result = null;
     try {
       const filePath = path.join(PLUGIN_PATH, plugin.identifier, template);
       const fn = pugCompileFile(filePath, { doctype: 'xml' });
-      const result = xmlToData(fn(data));
-
-      const keys = Object.keys(result);
-      if (keys.length <= 0) return this.object({}, options);
-      const rootName = keys[0];
-      return this.object(result[rootName], { rootName, ...options });
+      result = xmlToData(fn(data));
     } catch (err) {
       Logger.error(err, { plugin: plugin.identifier });
-      return this.object({}, { status: 1 });
+    } finally {
+      return this._safe_xml(result, options, plugin);
     }
   }
+
   success(options?: EamuseSendOption) {
     return this.object({}, { ...options, status: 0 });
   }

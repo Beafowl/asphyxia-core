@@ -1,10 +1,12 @@
 extends _layout.pug
+include _delete.pug
 
 block content
   .notification.is-success
     h4.title Coming Soon
     p Interactive query and plugin data management will come later.
     p In the mean time, you can just delete savedata.db to clear all data.
+    //- div #{plugin.id} #{plugin.dataSize}
   //- .notification.is-danger
   //-   h4.title 
   //-     span.icon
@@ -23,3 +25,37 @@ block content
   //-           | Profile
   //-       .card-content
   //-   .column
+
+  .columns.is-multiline
+    each plugin in pluginStats
+      .column.is-half
+        .card
+          header.card-header
+            p.card-header-title
+              span.icon
+                i.mdi.mdi-puzzle
+              | #{plugin.id}
+          .card-content
+            .level
+              .level-item.has-text-centered
+                div
+                  p.heading Plugin
+                  p.subtitle #{plugin.name}
+              .level-item.has-text-centered
+                div
+                  p.heading Data Usage
+                  p.subtitle #{plugin.dataSize}
+            .buttons.is-right
+              a.button.is-primary
+                span.icon.is-small
+                  i.mdi.mdi-table
+                span Query
+              button.button.is-danger.is-outlined.jb-modal.data-delete-button(data-target="confirm-modal" deleting=plugin.id deleting-name=plugin.id)
+                span.icon.is-small
+                  i.mdi.mdi-trash-can
+                span Delete
+
+  +confirm("Deleting all data of", "test/")
+    p
+      b Are you sure?
+    p You will not be able to undo this action.
