@@ -2,69 +2,73 @@ extends _layout.pug
 include _delete.pug
 
 block content
-  .notification.is-success
-    h4.title Query Tool Coming Soon
-    p Interactive query frontend will come later.
+  section.section.is-main-section
+    if dev
+      .notification.is-warning
+        h4.title Developer Mode
+        p Query shell enabled
 
-    //- div #{plugin.id} #{plugin.dataSize}
-  //- .notification.is-danger
-  //-   h4.title 
-  //-     span.icon
-  //-       i.mdi.mdi-alert
-  //-     | Danger Zone
-  //-   p Here you can erase each plugin's data. You will <b>NOT</b> be able to undo any action here.
-  //-   p Note that plugins that you already uninstalled will still show up here, so you can clear their data if you don't want them anymore.
-  //-   p PROCEED WITH CAUTION
-  //- .columns
-  //-   .column
-  //-     .card
-  //-       header.card-header
-  //-         p.card-header-title
-  //-           span.icon
-  //-             i.mdi.mdi-account
-  //-           | Profile
-  //-       .card-content
-  //-   .column
+      //- div #{plugin.id} #{plugin.dataSize}
+    //- .notification.is-danger
+    //-   h4.title 
+    //-     span.icon
+    //-       i.mdi.mdi-alert
+    //-     | Danger Zone
+    //-   p Here you can erase each plugin's data. You will <b>NOT</b> be able to undo any action here.
+    //-   p Note that plugins that you already uninstalled will still show up here, so you can clear their data if you don't want them anymore.
+    //-   p PROCEED WITH CAUTION
+    //- .columns
+    //-   .column
+    //-     .card
+    //-       header.card-header
+    //-         p.card-header-title
+    //-           span.icon
+    //-             i.mdi.mdi-account
+    //-           | Profile
+    //-       .card-content
+    //-   .column
 
-  .columns.is-multiline
-    each plugin in pluginStats
-      .column.is-half
-        .card
-          header.card-header
-            p.card-header-title
-              span.icon
-                i.mdi.mdi-puzzle
-              | #{plugin.id}
-              if (installed.indexOf(plugin.id) >= 0)
-                span.tag.has-margin-left-7.is-primary
-                  span.icon
-                    i.mdi.mdi-check-decagram.mdi-18px
-                  span Active
-              else
-                span.tag.has-margin-left-7.is-warning
-                  span.icon
-                    i.mdi.mdi-alert-decagram.mdi-18px
-                  span Uninstalled
-          .card-content
-            .level
-              .level-item.has-text-centered
-                div
-                  p.heading Plugin
-                  p.subtitle #{plugin.name}
-              .level-item.has-text-centered
-                div
-                  p.heading Data Usage
-                  p.subtitle #{plugin.dataSize}
-            .buttons.is-right
-              //- a.button.is-primary(href=`/data/${plugin.id}`)
-              //-   span.icon.is-small
-              //-     i.mdi.mdi-table
-              //-   span Query
-              button.button.is-danger.is-outlined.jb-modal.data-delete-button(data-target="confirm-modal" deleting=plugin.id deleting-name=plugin.id)
-                span.icon.is-small
-                  i.mdi.mdi-trash-can
-                span Delete
-
+    .columns.is-multiline
+      each plugin in pluginStats
+        .column.is-half
+          .card
+            header.card-header
+              p.card-header-title
+                span.icon
+                  i.mdi.mdi-puzzle
+                | #{plugin.id}
+                if (installed.indexOf(plugin.id) >= 0)
+                  span.tag.has-margin-left-7.is-primary
+                    span.icon
+                      i.mdi.mdi-check-decagram.mdi-18px
+                    span Active
+                else
+                  span.tag.has-margin-left-7.is-warning
+                    span.icon
+                      i.mdi.mdi-alert-decagram.mdi-18px
+                    span Uninstalled
+            .card-content
+              .level
+                .level-item.has-text-centered
+                  div
+                    p.heading Plugin
+                    p.subtitle #{plugin.name}
+                .level-item.has-text-centered
+                  div
+                    p.heading Data Usage
+                    p.subtitle #{plugin.dataSize}
+              .buttons.is-right
+                if dev
+                  a.button.is-warning(href=`/data/${plugin.id}`)
+                    span.icon.is-small
+                      i.mdi.mdi-table
+                    span Query
+                button.button.is-danger.is-outlined.jb-modal.data-delete-button(data-target="confirm-modal" deleting=plugin.id deleting-name=plugin.id)
+                  span.icon.is-small
+                    i.mdi.mdi-trash-can
+                  span Delete
+          
+block modal
   +confirm("Deleting all data of", "/data/")
     p
       b Are you sure?

@@ -2,6 +2,10 @@
   margin-right: 0.3em;
 }
 
+html {
+  overflow-y: hidden;
+}
+
 aside {
   overflow-y: auto;
   overflow-x: hidden;
@@ -13,8 +17,13 @@ aside {
   flex-direction: column;
 }
 
-.content {
+.content#main-content {
   flex: 1 0 auto;
+  /* display: flex;
+  flex-direction: column; */
+  max-height: calc(100vh - 92.31px);
+  overflow-y: auto;
+  margin-bottom: 0;
 }
 
 html.has-aside-mobile-transition #app,
@@ -304,7 +313,7 @@ a.tag.is-dark:hover {
 }
 
 #confirm-delete span {
-  padding: calc(0.5em - 1px) 1em;
+  padding: calc(0.375em - 1px) 0.75em;
   text-align: center;
 }
 
@@ -335,4 +344,17 @@ a.tag.is-dark:hover {
 #confirm-delete.is-deleting :nth-child(2) {
   transition-delay: 0.3s;
   opacity: 1;
+}
+
+.shell-input input {
+  font-family: monospace;
+}
+
+#shell-content {
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+#shell-content code {
+  overflow-x: hidden;
 }

@@ -5,7 +5,14 @@ import cookies from 'cookie-parser';
 import createMemoryStore from 'memorystore';
 import flash from 'connect-flash';
 import { VERSION } from '../utils/Consts';
-import { CONFIG_MAP, CONFIG_DATA, CONFIG, CONFIG_OPTIONS, SaveConfig } from '../utils/ArgConfig';
+import {
+  CONFIG_MAP,
+  CONFIG_DATA,
+  CONFIG,
+  CONFIG_OPTIONS,
+  SaveConfig,
+  ARGS,
+} from '../utils/ArgConfig';
 import { get, isEmpty } from 'lodash';
 import { Converter } from 'showdown';
 import {
@@ -25,6 +32,11 @@ import {
   APIRemove,
   PluginStats,
   PurgePlugin,
+  APIFindOne,
+  APIInsert,
+  APIUpdate,
+  APIUpsert,
+  APICount,
 } from '../utils/EamuseIO';
 import { urlencoded, json } from 'body-parser';
 import humanize from 'humanize-string';
@@ -279,23 +291,73 @@ webui.get(
   wrap(async (req, res) => {
     const pluginStats = await PluginStats();
     const installed = ROOT_CONTAINER.Plugins.map(p => p.Identifier);
-    res.render('data', data(req, 'Data Management', 'core', { pluginStats, installed }));
+    res.render(
+      'data',
+      data(req, 'Data Management', 'core', { pluginStats, installed, dev: ARGS.dev })
+    );
+  })
+);
+
+webui.get(
+  '/data/:plugin',
+  wrap(async (req, res) => {
+    const pluginID = req.params['plugin'];
+
+    res.render('data_plugin', data(req, 'Data Management', 'core', { subtitle: pluginID }));
+  })
+);
+
+webui.post(
+  '/data/db',
+  json(),
+  wrap(async (req, res) => {
+    const command = req.body.command;
+    const args = req.body.args;
+    const plugin = req.body.plugin;
+
+    try {
+      switch (command) {
+        case 'FindOne':
+          res.send((await (APIFindOne as any)({ name: plugin, core: false }, ...args)) || '<null>');
+          break;
+        case 'Find':
+          res.send((await (APIFind as any)({ name: plugin, core: false }, ...args)) || '<null>');
+          break;
+        case 'Insert':
+          res.send((await (APIInsert as any)({ name: plugin, core: false }, ...args)) || '<null>');
+          break;
+        case 'Remove':
+          res.send((await (APIRemove as any)({ name: plugin, core: false }, ...args)) || '<null>');
+          break;
+        case 'Update':
+          res.send((await (APIUpdate as any)({ name: plugin, core: false }, ...args)) || '<null>');
+          break;
+        case 'Upsert':
+          res.send((await (APIUpsert as any)({ name: plugin, core: false }, ...args)) || '<null>');
+          break;
+        case 'Count':
+          res.send((await (APICount as any)({ name: plugin, core: false }, ...args)) || '<null>');
+          break;
+      }
+    } catch (err) {
+      res.send({ error: err.toString() });
+    }
   })
 );
 
 webui.delete(
   '/data/:plugin',
   wrap(async (req, res) => {
-    const plugin = req.params['plugin'];
-    if (plugin && plugin.length > 0) await PurgePlugin(plugin);
+    const pluginID = req.params['plugin'];
+    if (pluginID && pluginID.length > 0) await PurgePlugin(pluginID);
 
-    const instance = ROOT_CONTAINER.getPluginByID(plugin);
-    if (instance) {
+    const plugin = ROOT_CONTAINER.getPluginByID(pluginID);
+    if (plugin) {
       // Re-register for init data
       try {
-        instance.Register();
+        plugin.Register();
       } catch (err) {
-        Logger.error(err, { plugin });
+        Logger.error(err, { plugin: pluginID });
       }
     }
     res.sendStatus(200);

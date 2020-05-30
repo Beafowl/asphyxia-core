@@ -39,14 +39,22 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
     link(rel="stylesheet", href="/static/css/margin.min.css")
     link(rel="stylesheet", href="/static/css/materialdesignicons.min.css")
     link(rel="stylesheet", href="/static/css/tooltip.min.css")
-    link(rel="stylesheet", href="/static/css/bulma-slider.min.css")
     link(rel="stylesheet", href="/static/css/style.css")
+    link(rel="stylesheet", href="/static/css/simplebar.min.css")
     script(type="text/javascript" src="/static/js/axios.min.js")
     script(type="text/javascript" src="/static/js/jquery-3.5.1.min.js")
     script(type="text/javascript" src="/static/js/jdenticon-2.2.0.min.js")
     script(type="text/javascript" src="/static/js/geopattern.min.js")
     script(type="text/javascript" src="/static/js/js.cookie-2.2.1.min.js")
+    script(type="text/javascript" src="/static/js/simplebar.min.js")
     block head
+    link(rel="stylesheet", href="/static/css/bulma-fix.css")
+    noscript
+      style
+        .
+          .simplebar-content-wrapper {
+            overflow: auto;
+          }
   body
     #app
       nav.navbar.is-fixed-top.is-info.is-mobile#navbar-main
@@ -82,7 +90,7 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
                   span.icon
                     i.mdi.mdi-power
                   span Shutdown CORE
-      aside.aside.is-placed-left.is-expanded
+      aside.aside.is-placed-left.is-expanded(data-simplebar)
         .aside-tools
           .aside-tools-label
             span #{version}
@@ -94,7 +102,7 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
             +li_menu_item("database", "Data Management", "/data")
             +li_menu_item("help-circle", "About", "/about")
           p.menu-label Plugins
-          ui.menu-list
+          ul.menu-list
             each plugin in plugins
               -
                 var link = plugin.id.toLowerCase();
@@ -104,7 +112,7 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
                 var isNumeric = /[0-9]/.test(char);
                 var icon = isAlpha ? `alpha-${char}-circle` : (isNumeric ? `numeric-${char}-circle` : 'record-circle');
               +li_plugin(icon, label, link, plugin.pages)
-      .content
+      .content#main-content(data-simplebar)
         section.hero.is-hero-bar
           .hero-body
             p.title #{title}
@@ -121,8 +129,7 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
                   | 
                   span.has-text-grey #{subsubtitle}
           
-        section.section.is-main-section
-          block content
+        block content
 
       footer.footer
         .content.has-text-centered
@@ -132,6 +139,8 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
               i.mdi.mdi-heart
             | by Team Asphyxia | Plugins by 
             a(href="/about") Community
+      
+      block modal
       
       script(type="text/javascript" src="/static/js/main.js")
       block scripts

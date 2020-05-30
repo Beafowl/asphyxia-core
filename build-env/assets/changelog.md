@@ -1,7 +1,13 @@
+## v1.15 beta
+
+- **PluginLoader**: Lodash (\_) is now exposed as API.
+- **WebUI**: Added a query shell for plugins. You need to enable developer mode to use it
+- **WebUI**: Added a dark mode which follows system's color preference
+
 ## v1.14 beta
 
-- **WebUI** Deleting any data now requires an additional step to prevent accidental deletion.
-- **WebUI** You can now delete plugins' data in the "Data Management" page.
+- **WebUI**: Deleting any data now requires an additional step to prevent accidental deletion.
+- **WebUI**: You can now delete plugins' data in the "Data Management" page.
 
 ## v1.13 beta
 

@@ -510,6 +510,13 @@ export async function APIFindOne(
       __affiliation: plugin.name,
       __refid: arg1,
     };
+  } else if (arg1 == null && typeof arg2 == 'object') {
+    CheckQuery(arg2);
+    query = {
+      ...arg2,
+      __reserved_field: 'plugins_profile',
+      __affiliation: plugin.name,
+    };
   } else if (typeof arg1 == 'object') {
     CheckQuery(arg1);
     query = {
@@ -530,7 +537,6 @@ export async function APIFindOne(
             __reserved_field: 0,
             __affiliation: 0,
             __collection: 0,
-            __refid: 0,
           },
       (err, doc) => {
         if (err) reject(err);
@@ -581,7 +587,6 @@ export async function APIFind(
             __reserved_field: 0,
             __affiliation: 0,
             __collection: 0,
-            __refid: 0,
           }
     )
       .sort({ createdAt: 1 })
@@ -613,6 +618,8 @@ export async function APIInsert(
       __affiliation: plugin.name,
       __refid: arg1,
     };
+  } else if (arg1 == null && typeof arg2 == 'object') {
+    throw new Error('refid must be specified for Insert Query');
   } else if (typeof arg1 == 'object') {
     CheckQuery(arg1);
     doc = {

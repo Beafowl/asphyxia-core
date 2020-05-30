@@ -35,6 +35,7 @@ import { ARGS, PluginRegisterConfig, CONFIG } from '../utils/ArgConfig';
 import { EamusePlugin } from './EamusePlugin';
 import { EamuseRouteHandler } from './EamuseRouteContainer';
 import xml2json from 'fast-xml-parser';
+import _ from 'lodash';
 
 /* Exposing API */
 const $: any = global;
@@ -66,6 +67,7 @@ $.$.NUMBER = getNumber;
 $.$.NUMBERS = getNumbers;
 $.$.STR = getStr;
 
+$._ = _;
 $.K = {
   ATTR: kattr,
   ITEM: kitem,

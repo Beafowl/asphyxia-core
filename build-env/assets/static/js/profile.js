@@ -9,7 +9,7 @@
   });
 
   $('#card-input').on('keypress', e => {
-    if (e.which == 13) {
+    if (e.code == 'Enter') {
       axios
         .post(`/profile/${$('#refid').text()}/card`, { cid: $('#card-input').val() })
         .then(response => {
