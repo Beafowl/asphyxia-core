@@ -1,6 +1,6 @@
 import { ArgumentParser } from 'argparse';
 import { VERSION } from './Consts';
-import { GetCallerPlugin, CONFIG_PATH } from './EamuseIO';
+import { CONFIG_PATH } from './EamuseIO';
 import { Logger } from './Logger';
 import { readFileSync, writeFileSync } from 'fs';
 import { parse, stringify } from 'ini';
@@ -113,37 +113,31 @@ function CoreConfig() {
 }
 CoreConfig();
 
-export function PluginRegisterConfig(key: string, options: CONFIG_OPTIONS) {
-  const plugin = GetCallerPlugin();
-  if (!plugin) {
-    Logger.error('failed to register config entry: unknown plugin');
-    return;
-  }
-
+export function PluginRegisterConfig(plugin: string, key: string, options: CONFIG_OPTIONS) {
   if (!options) {
     Logger.error(`failed to register config entry ${key}: config options not specified`, {
-      plugin: plugin.identifier,
+      plugin,
     });
   }
 
   if (options.default == null) {
     Logger.error(`failed to register config entry ${key}: default value not specified`, {
-      plugin: plugin.identifier,
+      plugin,
     });
   }
 
   if (!options.type == null) {
     Logger.error(`failed to register config entry ${key}: value type not specified`, {
-      plugin: plugin.identifier,
+      plugin,
     });
   }
 
-  if (!CONFIG_MAP[plugin.identifier]) {
-    CONFIG_MAP[plugin.identifier] = new Map();
+  if (!CONFIG_MAP[plugin]) {
+    CONFIG_MAP[plugin] = new Map();
   }
 
-  CONFIG_MAP[plugin.identifier].set(key, options);
-  NormalizeConfig(plugin.identifier, key, options);
+  CONFIG_MAP[plugin].set(key, options);
+  NormalizeConfig(plugin, key, options);
 }
 
 export function NormalizeConfig(plugin: string, key: string, option: CONFIG_OPTIONS) {

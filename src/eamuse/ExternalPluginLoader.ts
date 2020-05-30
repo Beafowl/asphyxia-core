@@ -21,7 +21,6 @@ import {
   WriteFile,
   ReadFile,
   ReadDir,
-  GetCallerPlugin,
   APIFindOne,
   APIFind,
   APIInsert,
@@ -31,209 +30,207 @@ import {
   APICount,
 } from '../utils/EamuseIO';
 import { readdirSync, existsSync } from 'fs';
-import { ARGS, PluginRegisterConfig, CONFIG } from '../utils/ArgConfig';
+import { ARGS, PluginRegisterConfig, CONFIG, CONFIG_OPTIONS } from '../utils/ArgConfig';
 import { EamusePlugin } from './EamusePlugin';
 import { EamuseRouteHandler } from './EamuseRouteContainer';
 import xml2json from 'fast-xml-parser';
 import _ from 'lodash';
 import { isPlainObject } from 'lodash';
 
-/* Exposing API */
-const $: any = global;
+/** Caller Detection */
+export function GetCallerPlugin(): string {
+  const trace: any = {};
 
-const tsconfig = path.join(PLUGIN_PATH, 'tsconfig.json');
-/* ncc/pkg hack */
-// require('typescript');
-const ts_node = require('ts-node');
-if (existsSync(tsconfig)) {
-  /* Inject ts-node */
-  ts_node.register({ project: tsconfig, transpileOnly: ARGS.dev ? false : true });
-} else {
-  ts_node.register({ transpileOnly: ARGS.dev ? false : true });
-}
+  const oldPrepareStackTrace = Error.prepareStackTrace;
+  Error.prepareStackTrace = (_, stack) => stack;
+  Error.captureStackTrace(trace, GetCallerPlugin);
 
-$.$ = (data: any) => {
-  if (!isPlainObject(data)) {
-    throw new Error('data is not a plain object. (Did you pass a KDataReader as data?)');
+  const stack = trace.stack;
+
+  Error.prepareStackTrace = oldPrepareStackTrace;
+
+  if (stack && typeof stack === 'object') {
+    for (const file of trace.stack) {
+      const filename: string = file.getFileName();
+      if (filename && filename.startsWith(PLUGIN_PATH)) {
+        return path.relative(PLUGIN_PATH, filename).split(path.sep)[0];
+      }
+    }
   }
-  return new KDataReader(data);
-};
 
-$.$.ATTR = getAttr;
-$.$.BIGINT = getBigInt;
-$.$.BIGINTS = getBigInts;
-$.$.BOOL = getBool;
-$.$.BUFFER = getBuffer;
-$.$.CONTENT = getContent;
-$.$.ELEMENT = getElement;
-$.$.ELEMENTS = getElements;
-$.$.NUMBER = getNumber;
-$.$.NUMBERS = getNumbers;
-$.$.STR = getStr;
-
-$._ = _;
-$.K = {
-  ATTR: kattr,
-  ITEM: kitem,
-  ARRAY: karray,
-};
-
-$.IO = {
-  Resolve,
-  WriteFile,
-  ReadFile,
-  ReadDir,
-};
-
-$.DB = {
-  FindOne: async (arg1: any, arg2?: any) => {
-    const plugin = GetCallerPlugin();
-    if (!plugin) {
-      Logger.error('DB unknown error');
-      return null;
-    }
-    return APIFindOne({ name: plugin.identifier, core: false }, arg1, arg2);
-  },
-  Find: async (arg1: any, arg2?: any) => {
-    const plugin = GetCallerPlugin();
-    if (!plugin) {
-      Logger.error('DB unknown error');
-      return [];
-    }
-    return APIFind({ name: plugin.identifier, core: false }, arg1, arg2);
-  },
-  Insert: async (arg1: any, arg2?: any) => {
-    const plugin = GetCallerPlugin();
-    if (!plugin) {
-      Logger.error('DB unknown error');
-      return null;
-    }
-    return APIInsert({ name: plugin.identifier, core: false }, arg1, arg2);
-  },
-  Remove: async (arg1: any, arg2?: any) => {
-    const plugin = GetCallerPlugin();
-    if (!plugin) {
-      Logger.error('DB unknown error');
-      return 0;
-    }
-    return APIRemove({ name: plugin.identifier, core: false }, arg1, arg2);
-  },
-  Update: async (arg1: any, arg2: any, arg3?: any) => {
-    const plugin = GetCallerPlugin();
-    if (!plugin) {
-      Logger.error('DB unknown error');
-      return 0;
-    }
-    return APIUpdate({ name: plugin.identifier, core: false }, arg1, arg2, arg3);
-  },
-  Upsert: async (arg1: any, arg2: any, arg3?: any) => {
-    const plugin = GetCallerPlugin();
-    if (!plugin) {
-      Logger.error('DB unknown error');
-      return 0;
-    }
-    return APIUpsert({ name: plugin.identifier, core: false }, arg1, arg2, arg3);
-  },
-  Count: async (arg1: any, arg2?: any) => {
-    const plugin = GetCallerPlugin();
-    if (!plugin) {
-      Logger.error('DB unknown error');
-      return 0;
-    }
-    return APICount({ name: plugin.identifier, core: false }, arg1, arg2);
-  },
-};
-
-$.U = {
-  toXML: dataToXML,
-  parseXML: (xml: string, simplify: boolean = true) => {
-    if (simplify) {
-      return xml2json.parse(xml);
-    } else {
-      return xmlToData(xml);
-    }
-  },
-  GetConfig: (key: string) => {
-    const plugin = GetCallerPlugin();
-    if (!plugin) return undefined;
-    if (!CONFIG[plugin.identifier]) return undefined;
-    return CONFIG[plugin.identifier][key];
-  },
-};
-
-$.R = {
-  GameCode: () => {},
-  Route: () => {},
-  Unhandled: () => {},
-  Contributor: () => {},
-  Config: () => {},
-  WebUIEvent: () => {},
-};
-
-function EnableRegisterNamespace(plugin: EamusePlugin) {
-  $.R.GameCode = (gameCode: string) => {
-    plugin.RegisterGameCode(gameCode);
-  };
-  $.R.Route = (method: string, handler?: boolean | EamuseRouteHandler) => {
-    plugin.RegisterRoute(method, handler);
-  };
-  $.R.Unhandled = (handler?: EamuseRouteHandler) => {
-    plugin.RegisterUnhandled(handler);
-  };
-  $.R.Contributor = (name: string, link?: string) => {
-    plugin.RegisterContributor(name, link);
-  };
-  $.R.WebUIEvent = (event: string, callback: (data: any) => void | Promise<void>) => {
-    plugin.RegisterWebUIEvent(event, callback);
-  };
-  $.R.Config = PluginRegisterConfig;
+  return null;
 }
 
-function DisableRegisterNamespace() {
-  $.R.GameCode = () => {};
-  $.R.Route = () => {};
-  $.R.Unhandled = () => {};
-  $.R.Contributor = () => {};
-  $.R.Config = () => {};
-  $.R.WebUIEvent = () => {};
-}
-
-if (!ARGS.dev) {
-  $.console.log = () => {};
-  $.console.warn = () => {};
-  $.console.debug = () => {};
-  $.console.info = () => {};
-} else {
-  $.console.log = (...msgs: any[]) => {
+const WrapCall = (name: string, func: any, def: any) => {
+  return (...args: any) => {
     const plugin = GetCallerPlugin();
-    if (plugin) {
-      Logger.info(msgs.join(' '), { plugin: plugin.identifier });
-    } else {
-      Logger.info(msgs.join(' '));
+    if (!plugin) {
+      Logger.error(`${name} unexpected error`);
+      return def;
     }
+    return func({ name: plugin, core: false }, ...args);
   };
-  $.console.debug = $.console.log;
-  $.console.info = $.console.log;
-  $.console.warn = (...msgs: any[]) => {
-    const plugin = GetCallerPlugin();
-    if (plugin) {
-      Logger.warn(msgs.join(' '), { plugin: plugin.identifier });
-    } else {
-      Logger.warn(msgs.join(' '));
-    }
-  };
-}
+};
 
-$.console.error = (...msgs: any[]) => {
-  const plugin = GetCallerPlugin();
-  if (plugin) {
-    Logger.error(msgs.join(' '), { plugin: plugin.identifier });
-  } else {
-    Logger.error(msgs.join(' '));
-  }
+const Pro = (res: any) => {
+  return new Promise(resolve => resolve(res));
+};
+
+export type PluginDetect = {
+  name: string;
+  core: boolean;
 };
 
 export function LoadExternalPlugins() {
+  /* Exposing API */
+  const $: any = global;
+
+  const tsconfig = path.join(PLUGIN_PATH, 'tsconfig.json');
+  /* ncc/pkg hack */
+  // require('typescript');
+  const ts_node = require('ts-node');
+  if (existsSync(tsconfig)) {
+    /* Inject ts-node */
+    ts_node.register({ project: tsconfig, transpileOnly: ARGS.dev ? false : true });
+  } else {
+    ts_node.register({ transpileOnly: ARGS.dev ? false : true });
+  }
+
+  $.$ = (data: any) => {
+    if (!isPlainObject(data)) {
+      throw new Error('data is not a plain object. (Did you pass a KDataReader as data?)');
+    }
+    return new KDataReader(data);
+  };
+
+  $.$.ATTR = getAttr;
+  $.$.BIGINT = getBigInt;
+  $.$.BIGINTS = getBigInts;
+  $.$.BOOL = getBool;
+  $.$.BUFFER = getBuffer;
+  $.$.CONTENT = getContent;
+  $.$.ELEMENT = getElement;
+  $.$.ELEMENTS = getElements;
+  $.$.NUMBER = getNumber;
+  $.$.NUMBERS = getNumbers;
+  $.$.STR = getStr;
+
+  $._ = _;
+  $.K = {
+    ATTR: kattr,
+    ITEM: kitem,
+    ARRAY: karray,
+  };
+
+  $.IO = {
+    Resolve: WrapCall('IO.Resolve', Resolve, ''),
+    WriteFile: WrapCall('IO.WriteFile', WriteFile, Pro(void 0)),
+    ReadFile: WrapCall('IO.ReadFile', ReadFile, Pro(null)),
+    ReadDir: WrapCall('IO.ReadDir', ReadDir, Pro([])),
+  };
+
+  $.DB = {
+    FindOne: WrapCall('DB.FindOne', APIFindOne, Pro(null)),
+    Find: WrapCall('DB.Find', APIFind, Pro([])),
+    Insert: WrapCall('DB.Insert', APIInsert, Pro(null)),
+    Remove: WrapCall('DB.Remove', APIRemove, Pro(0)),
+    Update: WrapCall('DB.Update', APIUpdate, Pro({ updated: 0, docs: [] })),
+    Upsert: WrapCall('DB.Upsert', APIUpsert, Pro({ updated: 0, docs: [], upsert: false })),
+    Count: WrapCall('DB.Count', APICount, Pro(0)),
+  };
+
+  $.U = {
+    toXML: dataToXML,
+    parseXML: (xml: string, simplify: boolean = true) => {
+      if (simplify) {
+        return xml2json.parse(xml);
+      } else {
+        return xmlToData(xml);
+      }
+    },
+    GetConfig: (key: string) => {
+      const plugin = GetCallerPlugin();
+      if (!plugin) return undefined;
+
+      if (!CONFIG[plugin]) return undefined;
+      return CONFIG[plugin][key];
+    },
+  };
+
+  $.R = {
+    GameCode: () => {},
+    Route: () => {},
+    Unhandled: () => {},
+    Contributor: () => {},
+    Config: () => {},
+    WebUIEvent: () => {},
+  };
+
+  function EnableRegisterNamespace(plugin: EamusePlugin) {
+    $.R.GameCode = (gameCode: string) => {
+      plugin.RegisterGameCode(gameCode);
+    };
+    $.R.Route = (method: string, handler?: boolean | EamuseRouteHandler) => {
+      plugin.RegisterRoute(method, handler);
+    };
+    $.R.Unhandled = (handler?: EamuseRouteHandler) => {
+      plugin.RegisterUnhandled(handler);
+    };
+    $.R.Contributor = (name: string, link?: string) => {
+      plugin.RegisterContributor(name, link);
+    };
+    $.R.WebUIEvent = (event: string, callback: (data: any) => void | Promise<void>) => {
+      plugin.RegisterWebUIEvent(event, callback);
+    };
+    $.R.Config = (key: string, options: CONFIG_OPTIONS) => {
+      PluginRegisterConfig(plugin.Identifier, key, options);
+    };
+  }
+
+  function DisableRegisterNamespace() {
+    $.R.GameCode = () => {};
+    $.R.Route = () => {};
+    $.R.Unhandled = () => {};
+    $.R.Contributor = () => {};
+    $.R.Config = () => {};
+    $.R.WebUIEvent = () => {};
+  }
+
+  if (!ARGS.dev) {
+    $.console.log = () => {};
+    $.console.warn = () => {};
+    $.console.debug = () => {};
+    $.console.info = () => {};
+  } else {
+    $.console.log = (...msgs: any[]) => {
+      const plugin = GetCallerPlugin();
+      if (plugin) {
+        Logger.info(msgs.join(' '), { plugin: plugin });
+      } else {
+        Logger.info(msgs.join(' '), { plugin: 'unknown' });
+      }
+    };
+    $.console.debug = $.console.log;
+    $.console.info = $.console.log;
+    $.console.warn = (...msgs: any[]) => {
+      const plugin = GetCallerPlugin();
+      if (plugin) {
+        Logger.warn(msgs.join(' '), { plugin: plugin });
+      } else {
+        Logger.warn(msgs.join(' '), { plugin: 'unknown' });
+      }
+    };
+  }
+
+  $.console.error = (...msgs: any[]) => {
+    const plugin = GetCallerPlugin();
+    if (plugin) {
+      Logger.error(msgs.join(' '), { plugin: plugin });
+    } else {
+      Logger.error(msgs.join(' '), { plugin: 'unknown' });
+    }
+  };
+
   const loaded: EamusePlugin[] = [];
 
   try {

@@ -1,8 +1,13 @@
 ## v1.16 beta
 
-- **API**: Now `$()` throws error if a non-plain-object is passed in as data
+- **WebUI**: Improved experience on mobile
+- **PluginLoader**: Fixed a problem where plugin API fails if CORE is launched in shell
+- **PluginLoader**: Fixed a problem where API wrapped in node built-in functions may fail
+- **API**: Now `$()` rejects non-plain objects as data
 - **API**: `$.ELEMENTS` and `$().elements` now always return valid arrays
 - **API**: DB queries now ignore `__refid` fields instead of throwing errors
+- **API**: The default handler of `R.Unhandled()` now correctly log plugins' identifiers
+- **API**: `K.ITEM()`, `K.ARRAY()` and `K.ATTR()` now have proper typings for TypeScript
 
 ## v1.15 beta
 

@@ -297,7 +297,7 @@ export class EamusePlugin {
           this.unhandled(info, sanitized, send);
         } else {
           Logger.warn(`unhandled method ${info.module}.${info.method}`, {
-            plugin: this.pluginName,
+            plugin: this.pluginIdentifier,
           });
           send.success();
         }

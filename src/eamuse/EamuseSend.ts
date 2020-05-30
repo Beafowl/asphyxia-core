@@ -3,7 +3,7 @@ import { defaultTo, set, get } from 'lodash';
 import { kencode, xmlToData, KBinEncoding, dataToXMLBuffer } from '../utils/KBinJSON';
 import { KonmaiEncrypt } from '../utils/KonmaiEncrypt';
 import LzKN from '../utils/LzKN';
-import { GetCallerPlugin, PLUGIN_PATH } from '../utils/EamuseIO';
+import { PLUGIN_PATH } from '../utils/EamuseIO';
 import { Logger } from '../utils/Logger';
 
 import { render as ejs, compile as ejsCompile } from 'ejs';
@@ -12,7 +12,7 @@ import path from 'path';
 import { EABody } from '../middlewares/EamuseMiddleware';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
-import { EamusePlugin } from './EamusePlugin';
+import { GetCallerPlugin } from './ExternalPluginLoader';
 
 export interface EamuseSendOption {
   status?: number;
@@ -83,7 +83,7 @@ export class EamuseSend {
       try {
         data = kencode(result, encoding, true);
       } catch (err) {
-        Logger.error(new Error('kencode failed') as any, { plugin: plugin.identifier });
+        Logger.error(new Error('kencode failed') as any, { plugin });
         this.object({}, { status: 1 }, plugin);
         return;
       }
@@ -109,7 +109,7 @@ export class EamuseSend {
     }
 
     if (plugin) {
-      this.res.setHeader('X-CORE-Plugin', plugin.identifier);
+      this.res.setHeader('X-CORE-Plugin', plugin);
     }
 
     this.res.send(data);
@@ -119,7 +119,7 @@ export class EamuseSend {
   xml(template: string, data?: any, options?: EamuseSendOption) {
     const plugin = GetCallerPlugin();
     if (!plugin) {
-      Logger.error(`unexpected error: unknown plugin`);
+      Logger.error(`send unexpected error`);
       return this.object({}, { status: 1 });
     }
 
@@ -127,7 +127,7 @@ export class EamuseSend {
     try {
       result = xmlToData(ejs(template, data));
     } catch (err) {
-      Logger.error(err, { plugin: plugin.identifier });
+      Logger.error(err, { plugin });
     } finally {
       return this._safe_xml(result, options, plugin);
     }
@@ -136,7 +136,7 @@ export class EamuseSend {
   pug(template: string, data?: any, options?: EamuseSendOption) {
     const plugin = GetCallerPlugin();
     if (!plugin) {
-      Logger.error(`unexpected error: unknown plugin`);
+      Logger.error(`send unexpected error`);
       return this.object({}, { status: 1 });
     }
 
@@ -145,7 +145,7 @@ export class EamuseSend {
       const fn = pugCompile(template, { doctype: 'xml' });
       result = xmlToData(fn(data));
     } catch (err) {
-      Logger.error(err, { plugin: plugin.identifier });
+      Logger.error(err, { plugin });
     } finally {
       return this._safe_xml(result, options, plugin);
     }
@@ -154,17 +154,17 @@ export class EamuseSend {
   xmlFile(template: string, data?: any, options?: EamuseSendOption) {
     const plugin = GetCallerPlugin();
     if (!plugin) {
-      Logger.error(`unexpected error: unknown plugin`);
+      Logger.error(`send unexpected error`);
       return this.object({}, { status: 1 });
     }
 
     let result = null;
     try {
-      const filePath = path.join(PLUGIN_PATH, plugin.identifier, template);
+      const filePath = path.join(PLUGIN_PATH, plugin, template);
       const fn = ejsCompile(readFileSync(filePath, { encoding: 'utf8' }));
       result = xmlToData(fn(data));
     } catch (err) {
-      Logger.error(err, { plugin: plugin.identifier });
+      Logger.error(err, { plugin });
     } finally {
       return this._safe_xml(result, options, plugin);
     }
@@ -173,17 +173,17 @@ export class EamuseSend {
   pugFile(template: string, data?: any, options?: EamuseSendOption) {
     const plugin = GetCallerPlugin();
     if (!plugin) {
-      Logger.error(`unexpected error: unknown plugin`);
+      Logger.error(`send unexpected error`);
       return this.object({}, { status: 1 });
     }
 
     let result = null;
     try {
-      const filePath = path.join(PLUGIN_PATH, plugin.identifier, template);
+      const filePath = path.join(PLUGIN_PATH, plugin, template);
       const fn = pugCompileFile(filePath, { doctype: 'xml' });
       result = xmlToData(fn(data));
     } catch (err) {
-      Logger.error(err, { plugin: plugin.identifier });
+      Logger.error(err, { plugin });
     } finally {
       return this._safe_xml(result, options, plugin);
     }

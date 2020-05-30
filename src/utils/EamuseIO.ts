@@ -10,9 +10,10 @@ import { NAMES } from './Consts';
 import { CONFIG } from './ArgConfig';
 import { isArray, get, groupBy, isPlainObject } from 'lodash';
 import { sizeof } from 'sizeof';
+import { PluginDetect } from '../eamuse/ExternalPluginLoader';
 
 const pkg: boolean = (process as any).pkg;
-export const EXEC_PATH = pkg ? path.dirname(process.argv0) : process.cwd();
+export const EXEC_PATH = path.resolve(pkg ? path.dirname(process.argv0) : process.cwd());
 export const PLUGIN_PATH = path.join(EXEC_PATH, 'plugins');
 export const SAVE_PATH = path.join(EXEC_PATH, 'savedata.db');
 export const ASSETS_PATH = path.join(pkg ? __dirname : `../build-env`, 'assets');
@@ -64,37 +65,6 @@ DB.loadDatabase(err => {
 
 const ID_GEN = new hashids('AsphyxiaCORE', 15, '0123456789ABCDEF');
 
-export function GetCallerPlugin(): { name: string; identifier: string } {
-  const oldPrepareStackTrace = Error.prepareStackTrace;
-  Error.prepareStackTrace = (_, stack) => stack;
-  const stack = new Error().stack as any;
-  Error.prepareStackTrace = oldPrepareStackTrace;
-  if (stack !== null && typeof stack === 'object') {
-    let inPlugin = false;
-    let entryFile = null;
-    for (const file of stack) {
-      const filename: string = file.getFileName();
-      if (!filename) return null;
-      if (filename.startsWith(PLUGIN_PATH)) {
-        entryFile = path.relative(PLUGIN_PATH, filename);
-        inPlugin = true;
-      } else {
-        if (inPlugin) {
-          break;
-        }
-      }
-    }
-
-    if (entryFile !== null) {
-      const plugin = entryFile.split(path.sep)[0];
-      return { name: plugin.split('@')[0], identifier: plugin };
-    } else {
-      return null;
-    }
-  }
-  return null;
-}
-
 export function PrepareDirectory(dir: string = ''): string {
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
@@ -122,23 +92,17 @@ export function ReadAssets(file: string): any {
 // =========================================
 //                Public IO
 // =========================================
-export function Resolve(file: string) {
-  const plugin = GetCallerPlugin();
-  if (!plugin) return;
-
-  return path.resolve(PLUGIN_PATH, plugin.identifier, file);
+export function Resolve(plugin: PluginDetect, file: string) {
+  return path.resolve(PLUGIN_PATH, plugin.name, file);
 }
 
-export async function ReadDir(file: string) {
-  const plugin = GetCallerPlugin();
-  if (!plugin) return;
-
-  const target = path.resolve(PLUGIN_PATH, plugin.identifier, file);
+export async function ReadDir(plugin: PluginDetect, file: string) {
+  const target = path.resolve(PLUGIN_PATH, plugin.name, file);
 
   return new Promise<{ name: string; type: 'file' | 'dir' | 'unsupported' }[]>(resolve => {
     readdir(target, { encoding: 'utf8', withFileTypes: true }, (err, files) => {
       if (err) {
-        Logger.error(`file writing failed: ${err}`, { plugin: plugin.identifier });
+        Logger.error(`file writing failed: ${err}`, { plugin });
         return resolve([]);
       }
       resolve(
@@ -152,14 +116,12 @@ export async function ReadDir(file: string) {
 }
 
 export async function WriteFile(
+  plugin: PluginDetect,
   file: string,
   data: string,
   options: { encoding?: string | null; mode?: number | string; flag?: string } | string | null
 ) {
-  const plugin = GetCallerPlugin();
-  if (!plugin) return;
-
-  const target = path.resolve(PLUGIN_PATH, plugin.identifier, file);
+  const target = path.resolve(PLUGIN_PATH, plugin.name, file);
 
   PrepareDirectory(path.dirname(target));
 
@@ -167,14 +129,14 @@ export async function WriteFile(
     if (options == null) {
       writeFile(target, data, err => {
         if (err) {
-          Logger.error(`file writing failed: ${err}`, { plugin: plugin.identifier });
+          Logger.error(`file writing failed: ${err}`, { plugin });
         }
         resolve();
       });
     } else {
       writeFile(target, data, options, err => {
         if (err) {
-          Logger.error(`file writing failed: ${err}`, { plugin: plugin.identifier });
+          Logger.error(`file writing failed: ${err}`, { plugin: plugin });
         }
         resolve();
       });
@@ -183,19 +145,17 @@ export async function WriteFile(
 }
 
 export async function ReadFile(
+  plugin: PluginDetect,
   file: string,
   options: { encoding?: string | null; flag?: string } | string | undefined | null
 ) {
-  const plugin = GetCallerPlugin();
-  if (!plugin) return;
-
-  const target = path.resolve(PLUGIN_PATH, plugin.identifier, file);
+  const target = path.resolve(PLUGIN_PATH, plugin.name, file);
 
   return new Promise<string | Buffer>(resolve => {
     if (options == null) {
       readFile(target, (err, data) => {
         if (err) {
-          Logger.error(`file reading failed: ${err}`, { plugin: plugin.identifier });
+          Logger.error(`file reading failed: ${err}`, { plugin: plugin });
           return resolve(null);
         }
         return resolve(data);
@@ -203,7 +163,7 @@ export async function ReadFile(
     } else {
       readFile(target, options, (err, data) => {
         if (err) {
-          Logger.error(`file reading failed: ${err}`, { plugin: plugin.identifier });
+          Logger.error(`file reading failed: ${err}`, { plugin: plugin });
           return resolve(null);
         }
         return resolve(data);
@@ -498,11 +458,7 @@ function CleanDoc(doc: any) {
   return doc;
 }
 
-export async function APIFindOne(
-  plugin: { name: string; core: boolean },
-  arg1: string | any,
-  arg2?: any
-) {
+export async function APIFindOne(plugin: PluginDetect, arg1: string | any, arg2?: any) {
   let query: any = null;
 
   if (typeof arg1 == 'string' && typeof arg2 == 'object') {
@@ -549,11 +505,7 @@ export async function APIFindOne(
   });
 }
 
-export async function APIFind(
-  plugin: { name: string; core: boolean },
-  arg1: string | any,
-  arg2?: any
-) {
+export async function APIFind(plugin: PluginDetect, arg1: string | any, arg2?: any) {
   let query: any = null;
   if (typeof arg1 == 'string' && typeof arg2 == 'object') {
     arg2 = CheckQuery(arg2);
@@ -600,11 +552,7 @@ export async function APIFind(
   });
 }
 
-export async function APIInsert(
-  plugin: { name: string; core: boolean },
-  arg1: string | any,
-  arg2?: any
-) {
+export async function APIInsert(plugin: PluginDetect, arg1: string | any, arg2?: any) {
   let doc: any = null;
   if (typeof arg1 == 'string' && typeof arg2 == 'object') {
     arg2 = CheckQuery(arg2);
@@ -642,12 +590,7 @@ export async function APIInsert(
   });
 }
 
-export async function APIUpdate(
-  plugin: { name: string; core: boolean },
-  arg1: string | any,
-  arg2: any,
-  arg3?: any
-) {
+export async function APIUpdate(plugin: PluginDetect, arg1: string | any, arg2: any, arg3?: any) {
   let query: any = null;
   let update: any = null;
   let signiture: any = { __affiliation: plugin.name };
@@ -702,12 +645,7 @@ export async function APIUpdate(
   });
 }
 
-export async function APIUpsert(
-  plugin: { name: string; core: boolean },
-  arg1: string | any,
-  arg2: any,
-  arg3?: any
-) {
+export async function APIUpsert(plugin: PluginDetect, arg1: string | any, arg2: any, arg3?: any) {
   let query: any = null;
   let update: any = null;
   let signiture: any = { __affiliation: plugin.name };
@@ -718,7 +656,7 @@ export async function APIUpsert(
       const profile = await FindProfile(arg1);
       if (profile == null) {
         Logger.warn('refid does not exists, insert operation canceled', { plugin: plugin.name });
-        return null;
+        return { updated: 0, docs: [], upsert: false };
       }
     }
     query = arg2;
@@ -769,11 +707,7 @@ export async function APIUpsert(
   });
 }
 
-export async function APIRemove(
-  plugin: { name: string; core: boolean },
-  arg1: string | any,
-  arg2?: any
-) {
+export async function APIRemove(plugin: PluginDetect, arg1: string | any, arg2?: any) {
   let query: any = null;
   if (typeof arg1 == 'string' && typeof arg2 == 'object') {
     arg2 = CheckQuery(arg2);
@@ -809,11 +743,7 @@ export async function APIRemove(
   });
 }
 
-export async function APICount(
-  plugin: { name: string; core: boolean },
-  arg1: string | any,
-  arg2?: any
-) {
+export async function APICount(plugin: PluginDetect, arg1: string | any, arg2?: any) {
   let query: any = null;
   if (typeof arg1 == 'string' && typeof arg2 == 'object') {
     arg2 = CheckQuery(arg2);
