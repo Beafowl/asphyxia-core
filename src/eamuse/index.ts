@@ -9,9 +9,9 @@ import { Logger } from '../utils/Logger';
 export const ROOT_CONTAINER = new EamuseRootRouter();
 let initialized = false;
 
-export const services = (url: string, plugins: EamusePlugin[]) => {
+export const services = (port: number, plugins: EamusePlugin[]) => {
   if (initialized) {
-    Logger.warn(`Only one service can be handled one at a time.`);
+    Logger.warn(`Only one service can be handled.`);
     return;
   }
   const routeEamuse = Router();
@@ -66,6 +66,8 @@ export const services = (url: string, plugins: EamusePlugin[]) => {
       ],
     };
 
+    const url =
+      port == 80 ? `http://${(info as any).host}` : `http://${(info as any).host}:${port}`;
     for (const moduleName of coreModules) {
       services.item.push({ '@attr': { name: moduleName, url } });
     }

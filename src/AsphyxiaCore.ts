@@ -56,7 +56,7 @@ function Main() {
   // ========== EAMUSE ============
   EAMUSE.set('views', path.join(ASSETS_PATH, 'views'));
   EAMUSE.set('view engine', 'pug');
-  EAMUSE.use('*', services(`http://${CONFIG.bind}:${CONFIG.port}`, external));
+  EAMUSE.use('*', services(CONFIG.port, external));
   EAMUSE.use('/static', express.static(path.join(ASSETS_PATH, 'static')));
   EAMUSE.use(webui);
 
@@ -71,7 +71,7 @@ function Main() {
     Logger.info('');
 
     if (CONFIG.webui_on_startup) {
-      open(`http://${CONFIG.bind}:${CONFIG.port}`);
+      open(`http://localhost:${CONFIG.port}`);
     }
   });
 

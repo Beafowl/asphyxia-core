@@ -1,3 +1,7 @@
+## v1.18
+
+- **CORE**: Fixed an access issue when binding 0.0.0.0
+
 ## v1.17 release candidate
 
 - **PluginWebUI**: URL queries is now exposed as `query` for custom WebUI pug files

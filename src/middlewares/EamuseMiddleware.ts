@@ -169,6 +169,11 @@ export const EamuseRoute = (router: EamuseRootRouter): RequestHandler => {
       (info as any).ip = req.ip.includes(':') ? '127.0.0.1' : req.ip;
     }
 
+    // HACK: give services host
+    if (body.module == 'services' && body.method == 'get') {
+      (info as any).host = req.hostname;
+    }
+
     try {
       await router.run(gameCode, body.module, body.method, info, data, send);
     } catch (err) {
