@@ -43,6 +43,7 @@ mixin form_control(option)
               input(type='checkbox' name=option.key checked=option.current)
               span.check
         p.help #{option.desc}
+
 mixin form(name, options)
   .card
     header.card-header
@@ -52,7 +53,6 @@ mixin form(name, options)
         | #{name}
     .card-content
       form(method='post')
-        input(type="hidden" name="__is_plugin" value="yes")
         each option in options
           +form_control(option)
         .field.is-grouped
@@ -64,3 +64,62 @@ mixin form(name, options)
                 .notification.is-success.is-light #{formMessage.message}
           .control
             button.button.is-link(type='submit') Apply
+
+mixin file_control(option)
+  .field.is-horizontal
+    .field-label(class=(option.type != 'boolean') ? "is-normal" : "")
+      label.label(for=option.key) #{option.name}
+    .field-body
+      .field.is-grouped
+        .control
+          if option.uploaded
+            .file.is-primary.has-name
+              label.file-label
+                input.file-input(type='file' name='test' accept='.xml')
+                span.file-cta
+                  span.file-icon
+                    i.mdi.mdi-check
+                  span.file-label Uploaded
+                span.file-name
+                  span.icon
+                    i.mdi.mdi-upload
+          else if option.required
+            .file.is-warning.has-name
+              label.file-label
+                input.file-input(type='file' name='test' accept='.xml')
+                span.file-cta
+                  span.file-icon
+                    i.mdi.mdi-alert
+                  span.file-label Required
+                span.file-name
+                  span.icon
+                    i.mdi.mdi-upload
+          else
+            .file.is-link.has-name
+              label.file-label
+                input.file-input(type='file' name='test' accept='.xml')
+                span.file-cta
+                  span.file-icon
+                    i.mdi.mdi-file
+                  span.file-label Upload
+                span.file-name
+                  span.icon
+                    i.mdi.mdi-upload
+        if option.uploaded
+          p.control
+            button.button.is-danger
+              span.icon
+                i.mdi.mdi-trash-can
+              span Clear
+        p.help #{option.desc}
+
+mixin files(name, options)
+  .card
+    header.card-header
+      p.card-header-title
+        span.icon
+          i.mdi.mdi-file
+        | #{name}
+    .card-content
+      each option in options
+        +file_control(option)

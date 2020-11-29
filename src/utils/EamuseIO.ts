@@ -10,6 +10,7 @@ import { CONFIG, ARGS } from './ArgConfig';
 import { isArray, get, groupBy, isPlainObject } from 'lodash';
 import { sizeof } from 'sizeof';
 import { PluginDetect } from '../eamuse/ExternalPluginLoader';
+import { ROOT_CONTAINER } from '../eamuse';
 
 const pkg: boolean = (process as any).pkg;
 const EXEC_PATH = path.resolve(pkg ? path.dirname(process.argv0) : process.cwd());
@@ -237,6 +238,16 @@ export async function PluginStats() {
           id: plugin,
           dataSize: sizeof(group[plugin], true),
         });
+      }
+
+      for (const installed of ROOT_CONTAINER.Plugins.map(e => e.Identifier)) {
+        if (!group[installed]) {
+          stats.push({
+            name: installed.split('@')[0].toUpperCase(),
+            id: installed,
+            dataSize: '0B',
+          });
+        }
       }
       resolve(stats);
     });
@@ -667,7 +678,7 @@ export async function APIUpsert(plugin: PluginDetect, arg1: string | any, arg2: 
     if (!plugin.core) {
       const profile = await FindProfile(arg1);
       if (profile == null) {
-        Logger.warn('refid does not exists, insert operation canceled', { plugin: plugin.name });
+        Logger.warn('refid does not exists, upsert operation canceled', { plugin: plugin.name });
         return { updated: 0, docs: [], upsert: false };
       }
     }
@@ -676,11 +687,7 @@ export async function APIUpsert(plugin: PluginDetect, arg1: string | any, arg2: 
     signiture.__s = 'plugins_profile';
     signiture.__refid = arg1;
   } else if (arg1 == null && typeof arg2 == 'object' && typeof arg3 == 'object') {
-    arg2 = CheckQuery(arg2);
-    arg3 = CheckQuery(arg3);
-    query = arg2;
-    update = arg3;
-    signiture.__s = 'plugins_profile';
+    throw new Error('refid must be specified for Upsert Query');
   } else if (typeof arg1 == 'object' && typeof arg2 == 'object') {
     arg1 = CheckQuery(arg1);
     arg2 = CheckQuery(arg2);

@@ -53,6 +53,12 @@ parser.addArgument(['--force-load-db'], {
   action: 'storeTrue',
 });
 
+parser.addArgument(['-d', '--savedata-dir'], {
+  help: 'Change savedata directory',
+  defaultValue: '.',
+  dest: 'savedata',
+});
+
 export const ARGS = parser.parseArgs();
 
 export interface CONFIG_OPTIONS {
@@ -129,26 +135,54 @@ export function PluginRegisterConfig(plugin: string, key: string, options: CONFI
     Logger.error(`failed to register config entry ${key}: config options not specified`, {
       plugin,
     });
+    return;
   }
 
   if (options.default == null) {
     Logger.error(`failed to register config entry ${key}: default value not specified`, {
       plugin,
     });
+    return;
   }
 
   if (!options.type == null) {
     Logger.error(`failed to register config entry ${key}: value type not specified`, {
       plugin,
     });
+    return;
   }
 
   if (!CONFIG_MAP[plugin]) {
     CONFIG_MAP[plugin] = new Map();
   }
 
-  CONFIG_MAP[plugin].set(key, options);
+  CONFIG_MAP[plugin].set(key, { ...options });
   NormalizeConfig(plugin, key, options);
+}
+
+export interface FILE_OPTIONS {
+  name?: string;
+  desc?: string;
+  accept?: string;
+  required?: boolean;
+}
+
+export type FILE_CHECK = FILE_OPTIONS & { path: string; filename: string; uploaded: boolean };
+
+export const DATAFILE_MAP: {
+  [key: string]: Map<string, FILE_OPTIONS>;
+} = {};
+
+export function PluginRegisterFile(plugin: string, path: string, options?: FILE_OPTIONS) {
+  if (!DATAFILE_MAP[plugin]) {
+    DATAFILE_MAP[plugin] = new Map();
+  }
+
+  if (!options) {
+    options = {};
+  }
+
+  DATAFILE_MAP[plugin].set(path, { ...options });
 }
 
 export function NormalizeConfig(plugin: string, key: string, option: CONFIG_OPTIONS) {

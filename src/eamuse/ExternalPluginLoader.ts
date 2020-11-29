@@ -30,7 +30,14 @@ import {
   APICount,
 } from '../utils/EamuseIO';
 import { readdirSync, existsSync } from 'fs';
-import { ARGS, PluginRegisterConfig, CONFIG, CONFIG_OPTIONS } from '../utils/ArgConfig';
+import {
+  ARGS,
+  PluginRegisterConfig,
+  CONFIG,
+  CONFIG_OPTIONS,
+  FILE_OPTIONS,
+  PluginRegisterFile,
+} from '../utils/ArgConfig';
 import { EamusePlugin } from './EamusePlugin';
 import { EamuseRouteHandler } from './EamuseRouteContainer';
 import xml2json from 'fast-xml-parser';
@@ -184,6 +191,9 @@ export function LoadExternalPlugins() {
     };
     $.R.Config = (key: string, options: CONFIG_OPTIONS) => {
       PluginRegisterConfig(plugin.Identifier, key, options);
+    };
+    $.R.DataFile = (path: string, options?: FILE_OPTIONS) => {
+      PluginRegisterFile(plugin.Identifier, path, options);
     };
   }
 

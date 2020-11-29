@@ -106,10 +106,10 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
           ul.menu-list
             each plugin in plugins
               -
-                var link = plugin.id.toLowerCase();
+                var link = plugin.id;
                 var label = plugin.name.toUpperCase();
-                var char = link[0];
-                var isAlpha = /[a-z]/.test(char);
+                var char = link[0].toLowerCase();
+                var isAlpha = /[a-zA-Z]/.test(char);
                 var isNumeric = /[0-9]/.test(char);
                 var icon = isAlpha ? `alpha-${char}-circle` : (isNumeric ? `numeric-${char}-circle` : 'record-circle');
               +li_plugin(icon, label, link, plugin.pages)

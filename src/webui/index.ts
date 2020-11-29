@@ -12,6 +12,8 @@ import {
   CONFIG_OPTIONS,
   SaveConfig,
   ARGS,
+  DATAFILE_MAP,
+  FILE_CHECK,
 } from '../utils/ArgConfig';
 import { get, isEmpty } from 'lodash';
 import { Converter } from 'showdown';
@@ -157,6 +159,28 @@ function ConfigData(plugin: string) {
     }
   }
   return config;
+}
+
+function DataFileCheck(plugin: string) {
+  const files: FILE_CHECK[] = [];
+  const fileMap = DATAFILE_MAP[plugin];
+
+  if (!fileMap) {
+    return [];
+  }
+
+  for (const [filepath, c] of fileMap) {
+    const target = path.resolve(PLUGIN_PATH, plugin, filepath);
+    const filename = path.basename(target);
+    const uploaded = existsSync(target);
+    const config = { ...c };
+    if (!c.name) {
+      config.name = filename;
+    }
+    files.push({ ...config, path: filepath, uploaded, filename });
+  }
+
+  return files;
 }
 
 webui.get('/favicon.ico', async (req, res) => {
@@ -408,6 +432,7 @@ webui.get(
     }
 
     const config = ConfigData(plugin.Identifier);
+    const datafile = DataFileCheck(plugin.Identifier);
     const contributors = plugin ? plugin.Contributors : [];
     const gameCodes = plugin ? plugin.GameCodes : [];
 
@@ -416,6 +441,7 @@ webui.get(
       data(req, plugin.Name, plugin.Identifier, {
         readme,
         config,
+        datafile,
         contributors,
         gameCodes,
         subtitle: 'Overview',
@@ -492,6 +518,10 @@ webui.get(
     for (const refid in profiles) {
       let name = undefined;
       for (const doc of profiles[refid]) {
+        if (doc.__refid == null) {
+          PurgeProfile(doc.__refid);
+          break;
+        }
         if (typeof doc.name == 'string') {
           name = doc.name;
           break;

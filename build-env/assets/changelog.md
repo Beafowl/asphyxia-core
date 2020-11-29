@@ -1,3 +1,11 @@
+## v1.19
+
+- **WebUI**: Query shell is now avaliable for all installed plugins even if there are no DB data of them
+- **WebUI**: Fixed a issue where the WebUI of plugins with uppercase letter cannot be accessed
+- **API**: Fixed a typechecking issue where `{ exists: true }` query is only allowed on number/string fields
+- **API**: Provided API `R.DataFile` to allow users to upload their data to the plugins folder
+- **API**: `DB.Upsert` now rejects null as refid
+
 ## v1.18
 
 - **CORE**: Fixed an access issue when binding 0.0.0.0
@@ -26,8 +34,8 @@
 
 ## v1.14 beta
 
-- **WebUI**: Deleting any data now requires an additional step to prevent accidental deletion.
-- **WebUI**: You can now delete plugins' data in the "Data Management" page.
+- **WebUI**: Deleting any data now requires an additional step to prevent accidental deletion
+- **WebUI**: You can now delete plugins' data in the "Data Management" page
 
 ## v1.13 beta
 
