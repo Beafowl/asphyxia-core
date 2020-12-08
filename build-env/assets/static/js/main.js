@@ -88,4 +88,34 @@
     if (str == '') str = undefined;
     $(this).css({ background: GeoPattern.generate(str).toDataUrl() });
   });
+
+  $('.data-upload').on('change', e => {
+    const data = new FormData();
+    data.append('upload', e.currentTarget.files[0], e.currentTarget.files[0].name);
+    axios({
+      method: 'post',
+      url: `/emit/upload/${encodeURIComponent(e.currentTarget.getAttribute('name'))}`,
+      data: data,
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${data._boundary}`,
+      },
+    })
+      .then(response => {
+        window.location.reload(true);
+      })
+      .catch(error => {
+        window.location.reload(true);
+      });
+  });
+
+  $('.data-delete').on('click', e => {
+    axios
+      .delete(`/emit/upload/${encodeURIComponent(e.currentTarget.getAttribute('deleting'))}`)
+      .then(response => {
+        window.location.reload(true);
+      })
+      .catch(error => {
+        window.location.reload(true);
+      });
+  });
 })();

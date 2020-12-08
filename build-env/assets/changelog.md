@@ -2,6 +2,7 @@
 
 - **WebUI**: Query shell is now avaliable for all installed plugins even if there are no DB data of them
 - **WebUI**: Fixed a issue where the WebUI of plugins with uppercase letter cannot be accessed
+- **WebUI**: Custom WebUI pages now works without `//DATA//` section.
 - **API**: Fixed a typechecking issue where `{ exists: true }` query is only allowed on number/string fields
 - **API**: Provided API `R.DataFile` to allow users to upload their data to the plugins folder
 - **API**: `DB.Upsert` now rejects null as refid
@@ -28,7 +29,7 @@
 
 ## v1.15 beta
 
-- **PluginLoader**: Lodash (`\_`) is now exposed as API.
+- **PluginLoader**: Lodash (`_`) is now exposed as API.
 - **WebUI**: Added a query shell for plugins. You need to enable developer mode to use it
 - **WebUI**: Added a dark mode which follows system's color preference
 

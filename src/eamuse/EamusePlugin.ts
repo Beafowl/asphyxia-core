@@ -170,9 +170,10 @@ export class EamusePlugin {
       try {
         const template = readFileSync(filePath, { encoding: 'utf8' });
 
-        const dataBlocks = template.match(
-          /^\/\/DATA\/\/\s*$[\n|\r|\n\r]((?:^\s+[_a-z]\w*:\s*.+$[\n|\r|\n\r]?)+)/gm
-        );
+        const dataBlocks =
+          template.match(
+            /^\/\/DATA\/\/\s*$[\n|\r|\n\r]((?:^\s+[_a-z]\w*:\s*.+$[\n|\r|\n\r]?)+)/gm
+          ) || [];
 
         const fn = compile(template);
         const props: { [field: string]: string } = {};

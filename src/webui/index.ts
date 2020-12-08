@@ -47,7 +47,7 @@ import { fun } from './fun';
 import { card2nfc, nfc2card, cardType } from '../utils/CardCipher';
 import { groupBy, startCase, lowerCase, upperFirst } from 'lodash';
 import { sizeof } from 'sizeof';
-import { emit } from './emit';
+import { ajax as emit } from './emit';
 import { Logger } from '../utils/Logger';
 
 const memorystore = createMemoryStore(session);

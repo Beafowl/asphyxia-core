@@ -75,7 +75,7 @@ mixin file_control(option)
           if option.uploaded
             .file.is-primary.has-name
               label.file-label
-                input.file-input(type='file' name='test' accept='.xml')
+                input.data-upload.file-input(type='file' name=option.path accept=option.accept)
                 span.file-cta
                   span.file-icon
                     i.mdi.mdi-check
@@ -86,7 +86,7 @@ mixin file_control(option)
           else if option.required
             .file.is-warning.has-name
               label.file-label
-                input.file-input(type='file' name='test' accept='.xml')
+                input.data-upload.file-input(type='file' name=option.path accept=option.accept)
                 span.file-cta
                   span.file-icon
                     i.mdi.mdi-alert
@@ -97,7 +97,7 @@ mixin file_control(option)
           else
             .file.is-link.has-name
               label.file-label
-                input.file-input(type='file' name='test' accept='.xml')
+                input.data-upload.file-input(type='file' name=option.path accept=option.accept)
                 span.file-cta
                   span.file-icon
                     i.mdi.mdi-file
@@ -107,7 +107,7 @@ mixin file_control(option)
                     i.mdi.mdi-upload
         if option.uploaded
           p.control
-            button.button.is-danger
+            button.data-delete.button.is-danger(deleting=option.path)
               span.icon
                 i.mdi.mdi-trash-can
               span Clear

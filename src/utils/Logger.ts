@@ -11,7 +11,7 @@ export const Logger = winston.createLogger({
       let stack = '';
       if (info.stack) {
         stack += `\n${info.stack}`;
-      } else if ((info.message as any).stack) {
+      } else if (info.message && (info.message as any).stack) {
         stack += `\n${(info.message as any).stack}`;
       }
 
