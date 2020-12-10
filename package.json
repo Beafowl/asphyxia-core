@@ -43,7 +43,7 @@
     "pug": "^2.0.4",
     "showdown": "^1.9.1",
     "sizeof": "^1.0.0",
-    "ts-node": "^8.10.1",
+    "ts-node": "^8.10.2",
     "typedoc": "^0.17.8",
     "typescript": "^3.9.7",
     "winston": "^3.2.1"

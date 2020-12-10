@@ -11,11 +11,12 @@
   },
   "pkg": {
     "assets": [
+      "./node_modules/typescript",
       "./assets"
     ]
   },
   "dependencies": {
     "pug": "^2.0.4",
-    "ts-node": "^8.10.1"
+    "ts-node": "^8.10.2"
   }
 }
