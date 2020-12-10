@@ -43,6 +43,7 @@ import { EamuseRouteHandler } from './EamuseRouteContainer';
 import xml2json from 'fast-xml-parser';
 import _ from 'lodash';
 import { isPlainObject } from 'lodash';
+import { VERSION } from '../utils/Consts';
 
 /** Caller Detection */
 export function GetCallerPlugin(): string {
@@ -172,6 +173,10 @@ export function LoadExternalPlugins() {
     Config: () => {},
     WebUIEvent: () => {},
   };
+
+  $.CORE_VERSION = VERSION;
+  $.CORE_VERSION_MAJOR = parseInt(VERSION.split('.')[0].substr(1));
+  $.CORE_VERSION_MINOR = parseInt(VERSION.split('.')[1]);
 
   function EnableRegisterNamespace(plugin: EamusePlugin) {
     $.R.GameCode = (gameCode: string) => {

@@ -44,8 +44,8 @@
     "showdown": "^1.9.1",
     "sizeof": "^1.0.0",
     "ts-node": "^8.10.1",
-    "typedoc": "^0.17.6",
-    "typescript": "^3.9.3",
+    "typedoc": "^0.17.8",
+    "typescript": "^3.9.7",
     "winston": "^3.2.1"
   }
 }

@@ -1,6 +1,21 @@
 /// <reference types="node" />
 /// <reference types="lodash" />
 
+/**
+ * Version string of Asphyxia CORE, for example "v1.19"
+ */
+declare const CORE_VERSION: string;
+
+/**
+ * Major version of Asphyxia CORE, for version `v1.19`, this number is 1.
+ */
+declare const CORE_VERSION_MAJOR: number;
+
+/**
+ * Minor version of Asphyxia CORE, for version `v1.19`, this number is 19.
+ */
+declare const CORE_VERSION_MINOR: number;
+
 declare type KNumberType =
   | 's8'
   | 'u8'
