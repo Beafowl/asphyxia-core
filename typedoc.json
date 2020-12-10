@@ -3,7 +3,7 @@
   "excludeExternals": true,
   "externalPattern": ["!./plugins/asphyxia-core.d.ts"],
   "mode": "file",
-  "readme": "./docs/_typedoc.md",
+  "readme": "none",
   "name": "Asphyxia CORE Module API",
   "out": "./docs/typedoc",
   "tsconfig": "./plugins/tsconfig.json"
