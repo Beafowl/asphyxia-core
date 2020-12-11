@@ -1,3 +1,6 @@
+## v1.20d
+- **Misc**: Auto startup now respects bind address and supports IPv6 better
+
 ## v1.20
 
 - **API**: Added `IO.Exists` for checking whether a file exists

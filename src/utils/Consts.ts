@@ -1,4 +1,4 @@
-export const VERSION = 'v1.20';
+export const VERSION = 'v1.20d';
 export const NAMES = [
   'Akehiro',
   'Akihiro',
