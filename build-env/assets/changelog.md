@@ -1,5 +1,7 @@
-## v1.20d
+## v1.20f
 - **Misc**: Auto startup now respects bind address and supports IPv6 better
+- **Misc**: Fixed an issue where submitting config change sometimes leads to bad request error.
+- **CORE**: `kencode` parser now tries to print the path of failure
 
 ## v1.20
 
@@ -24,8 +26,8 @@
 
 ## v1.17 release candidate
 
-- **PluginWebUI**: URL queries is now exposed as `query` for custom WebUI pug files
-- **PluginWebUI**: `emit` function is now available directly in pug files
+- **WebUI**: URL queries is now exposed as `query` for custom WebUI pug files
+- **WebUI**: `emit` function is now available directly in pug files
 
 ## v1.16 beta
 
@@ -40,7 +42,7 @@
 
 ## v1.15 beta
 
-- **PluginLoader**: Lodash (`_`) is now exposed as API.
+- **API**: Lodash (`_`) is now exposed as API.
 - **WebUI**: Added a query shell for plugins. You need to enable developer mode to use it
 - **WebUI**: Added a dark mode which follows system's color preference
 

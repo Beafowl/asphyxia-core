@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { defaultTo, set, get } from 'lodash';
+import { defaultTo, set, get, isArray } from 'lodash';
 import { kencode, xmlToData, KBinEncoding, dataToXMLBuffer } from '../utils/KBinJSON';
 import { KonmaiEncrypt } from '../utils/KonmaiEncrypt';
 import LzKN from '../utils/LzKN';
@@ -83,7 +83,11 @@ export class EamuseSend {
       try {
         data = kencode(result, encoding, true);
       } catch (err) {
-        Logger.error(new Error('kencode failed') as any, { plugin });
+        if (err && err.path && isArray(err.path)) {
+          Logger.error(new Error(`kencode failed: parsing error at '${err.path.join('.')}'`) as any, { plugin });
+        } else {
+          Logger.error(new Error('kencode failed: unknown error') as any, { plugin });
+        }
         this.object({}, { status: 1 }, plugin);
         return;
       }

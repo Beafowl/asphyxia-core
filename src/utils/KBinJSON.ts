@@ -444,8 +444,10 @@ function nodeToBinary(
   nodeBuf: WriteBuffer,
   dataBuf: WriteBuffer,
   encoding: KBinEncoding,
-  compressed: boolean
+  compressed: boolean,
+  path: string[] = [],
 ): void {
+  path.push(name);
   const jpEncoding = encoding;
 
   function appendNodeName(nodeName: string): void {
@@ -547,16 +549,22 @@ function nodeToBinary(
       continue;
     }
     const childNode = node[child];
-    if (Array.isArray(childNode)) {
-      for (const entry of childNode) {
-        nodeToBinary(entry, child, nodeBuf, dataBuf, encoding, compressed);
+
+    try {
+      if (Array.isArray(childNode)) {
+        for (const entry of childNode) {
+          nodeToBinary(entry, child, nodeBuf, dataBuf, encoding, compressed, path);
+        }
+      } else {
+        nodeToBinary(childNode, child, nodeBuf, dataBuf, encoding, compressed, path);
       }
-    } else {
-      nodeToBinary(childNode, child, nodeBuf, dataBuf, encoding, compressed);
+    } catch (err) {
+      throw { path, err }
     }
   }
 
   nodeBuf.write('u8', XML_TYPES.nodeEnd | 64);
+  path.pop();
 }
 
 export function kencode(
