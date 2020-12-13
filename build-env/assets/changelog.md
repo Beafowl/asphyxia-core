@@ -1,7 +1,9 @@
 ## v1.20f
+
 - **Misc**: Auto startup now respects bind address and supports IPv6 better
-- **Misc**: Fixed an issue where submitting config change sometimes leads to bad request error.
+- **Misc**: Fixed an issue where submitting config change sometimes leads to bad request error
 - **CORE**: `kencode` parser now tries to print the path of failure
+- **WebUI**: Fixed a problem that `POST /emit/<event_name>` fails
 
 ## v1.20
 

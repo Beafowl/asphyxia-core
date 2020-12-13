@@ -94,7 +94,7 @@
     data.append('upload', e.currentTarget.files[0], e.currentTarget.files[0].name);
     axios({
       method: 'post',
-      url: `/emit/upload/${encodeURIComponent(e.currentTarget.getAttribute('name'))}`,
+      url: `/upload/${encodeURIComponent(e.currentTarget.getAttribute('name'))}`,
       data: data,
       headers: {
         'Content-Type': `multipart/form-data; boundary=${data._boundary}`,
@@ -110,7 +110,7 @@
 
   $('.data-delete').on('click', e => {
     axios
-      .delete(`/emit/upload/${encodeURIComponent(e.currentTarget.getAttribute('deleting'))}`)
+      .delete(`/upload/${encodeURIComponent(e.currentTarget.getAttribute('deleting'))}`)
       .then(response => {
         window.location.reload(true);
       })

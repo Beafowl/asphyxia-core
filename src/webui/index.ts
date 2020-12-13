@@ -68,7 +68,7 @@ webui.use(flash());
 let wrap = (fn: RequestHandler) => (...args: any[]) => (fn as any)(...args).catch(args[2]);
 
 webui.use('/fun', fun);
-webui.use('/emit', emit);
+webui.use('/', emit);
 
 const markdown = new Converter({
   headerLevelStart: 3,

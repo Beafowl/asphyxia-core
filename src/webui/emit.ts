@@ -8,7 +8,7 @@ import { DATAFILE_MAP } from '../utils/ArgConfig';
 
 export const ajax = Router();
 
-ajax.post('/event/:event', urlencoded({ extended: true }), json(), async (req, res) => {
+ajax.post('/emit/:event', urlencoded({ extended: true }), json(), async (req, res) => {
   if (!req.headers.referer) {
     res.sendStatus(400);
     return;
