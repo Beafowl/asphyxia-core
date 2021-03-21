@@ -5,9 +5,10 @@
     "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "target": "esnext",
+    "target": "es5",
     "noImplicitAny": true,
     "moduleResolution": "node",
+    "downlevelIteration": true,
     "sourceMap": true,
     "outDir": "dist",
     "rootDir": "src"

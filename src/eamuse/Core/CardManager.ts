@@ -17,6 +17,9 @@ export const cardmng = new EamuseRouteContainer();
 
 async function CheckProfile(gameCode: string, refid: string) {
   const plugin = ROOT_CONTAINER.getPluginByCode(gameCode);
+  if (!plugin) {
+    return false;
+  }
   const profile = await APIFindOne({ name: plugin.Identifier, core: true }, refid, {});
   if (profile != null) {
     return true;

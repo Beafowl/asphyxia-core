@@ -80,7 +80,8 @@ const BINARY_LENGTH_MAP: { [key: string]: number } = {
 // Buffer polyfill
 if (process.version.startsWith('v10')) {
   Logger.debug('Polyfill: Bigint Buffer');
-  function writeBigU_Int64BE(buf: Buffer, value: bigint, offset: number) {
+  
+  const writeBigU_Int64BE = (buf: Buffer, value: bigint, offset: number) => {
     let lo = Number(value & BigInt(0xffffffff));
     buf[offset + 7] = lo;
     lo = lo >> 8;

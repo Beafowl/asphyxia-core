@@ -96,7 +96,9 @@ function Main() {
     Logger.info('');
 
     if (CONFIG.webui_on_startup) {
-      open(`http://${openAddr}:${CONFIG.port}`);
+      try {
+        open(`http://${openAddr}:${CONFIG.port}`);
+      } catch {}
     }
   });
 

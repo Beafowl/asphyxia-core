@@ -22,8 +22,8 @@ async function refmap(gameCode: string, str: string, refMap: any): Promise<strin
   if (typeof str !== 'string') {
     return str;
   }
-  for (const match of str.matchAll(regex)) {
-    const cid = match[2];
+  for (const match of str.match(regex)) {
+    const cid = match.trim();
 
     if (refMap[cid]) break;
 
@@ -170,20 +170,21 @@ export class EamusePlugin {
       try {
         const template = readFileSync(filePath, { encoding: 'utf8' });
 
-        const dataBlocks =
+        const dataBlock =
           template.match(
-            /^\/\/DATA\/\/\s*$[\n|\r|\n\r]((?:^\s+[_a-z]\w*:\s*.+$[\n|\r|\n\r]?)+)/gm
+            /^\/\/DATA\/\/\s*$[\n|\r|\n\r]((?:^\s+[_a-z]\w*:\s*.+$[\n|\r|\n\r]?)+)/m
           ) || [];
 
         const fn = compile(template);
         const props: { [field: string]: string } = {};
-
-        for (const block of dataBlocks) {
-          const lines = block.matchAll(/([_a-z]\w*):\s*(.*)/g);
-          for (const parts of lines) {
+            
+        const lines = dataBlock[1].split('\n');
+        for (const line of lines) {
+          const parts = line.trim().match(/([_a-z]\w*):\s*(.*)/);
+          if (parts) {
             const field = parts[1];
-            const expression = parts[2];
-
+            const expression = parts[2].endsWith(',') ? parts[2].slice(0, parts.length - 1) : parts[2]
+  
             this.ExpressionCheck(page.startsWith('profile_'), expression);
             props[field] = expression;
           }

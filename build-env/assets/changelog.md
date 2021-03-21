@@ -1,3 +1,11 @@
+## v1.30a
+
+- **CORE**: Fixed an issue where the command line options are ignored
+- **PluginLoader**: Fixed an error during card-in if the current gamecode is not registered by any plugins
+- **Misc**: Upgrade TypeScript to 4.2.3
+- **Misc**: Plugins are now targeting es5 to make sure TypeScript correctly transpile newer ES features for NodeJS 10 and 12
+
+
 ## v1.20f
 
 - **Misc**: Auto startup now respects bind address and supports IPv6 better

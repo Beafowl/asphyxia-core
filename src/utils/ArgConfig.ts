@@ -240,7 +240,7 @@ export const CONFIG: any = new Proxy(
   {},
   {
     get: (_, prop) => {
-      return ARGS.prop || INI[prop];
+      return ARGS[prop] || INI[prop];
     },
     set: (_, prop, value) => {
       INI[prop] = value;
