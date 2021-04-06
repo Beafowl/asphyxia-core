@@ -3,11 +3,11 @@
 mkdir -p build
 
 regex='VERSION = '"'"'(.*)'"'"''
-[[ $(cat ./src/util/Consts.ts) =~ $regex ]]
+[[ $(cat ./src/utils/Consts.ts) =~ $regex ]]
 
 VERSION=${BASH_REMATCH[1]}
 
-echo "Building Version $VERSION for arm64"
+echo "Building Version $VERSION for Arm"
 
 echo "NPM Install"
 npm ci

@@ -1,8 +1,11 @@
+# Getting version
+$VER_CODE = Select-String -Path ".\src\utils\Consts.ts" -Pattern "VERSION = '(.*)'"
+$VERSION = $VER_CODE.Matches.Groups[1].Value;
+
+Write-Output "Building Version $VERSION for Windows"
+
 # Prepare directories
 New-Item -Path "." -Name "build" -ItemType "directory" -Force | Out-Null
-
-Write-Output "Building Windows Version"
-
 
 Write-Output "Copying windows node binary cache"
 New-Item -Path "$env:USERPROFILE" -Name ".pkg-cache" -ItemType "directory" -Force | Out-Null

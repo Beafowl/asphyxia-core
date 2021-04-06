@@ -2,7 +2,12 @@
 
 mkdir -p build
 
-echo "Building Linux Version"
+regex='VERSION = '"'"'(.*)'"'"''
+[[ $(cat ./src/utils/Consts.ts) =~ $regex ]]
+
+VERSION=${BASH_REMATCH[1]}
+
+echo "Building Version $VERSION for Linux"
 
 echo "NPM Install"
 npm ci
@@ -28,4 +33,4 @@ rm -f ./build/asphyxia-core-linux-x64.zip
 cd build
 zip -qq asphyxia-core-linux-x64.zip asphyxia-core
 cd ..
-zip -qq ./build/asphyxia-core-armv7.zip -r plugins
+zip -qq ./build/asphyxia-core-linux-x64.zip -r plugins
