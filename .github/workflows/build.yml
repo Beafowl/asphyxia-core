@@ -1,4 +1,4 @@
-name: Build Linux version
+name: Build Asphyxia Core
 on: [push]
 jobs:
   build-linux:
