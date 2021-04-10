@@ -46,11 +46,11 @@ jobs:
           githubToken: ${{ github.token }}
 
           install: |
-            apt update
-            apt install -y curl zip
+            apt-get update
+            apt-get install -y curl zip
             curl -sL https://deb.nodesource.com/setup_12.x | bash -
-            apt install -y nodejs
-            npx
+            apt-get install -y nodejs
+
           run: |
             bash build-arm-build.sh
       - run: bash build-arm-post.sh
