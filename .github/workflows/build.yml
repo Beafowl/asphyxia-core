@@ -43,16 +43,15 @@ jobs:
           arch: armv7
           distro: ubuntu18.04
 
-          # Not required, but speeds up builds by storing container images in
-          # a GitHub package registry.
           githubToken: ${{ github.token }}
 
-          # Set an output parameter `uname` for use in subsequent steps
-          run: |
+          install: |
             apt update
             apt install -y curl zip
             curl -sL https://deb.nodesource.com/setup_12.x | bash -
             apt install -y nodejs
+
+          run: |
             bash build-arm-build.sh
       - run: bash build-arm-post.sh
       - uses: actions/upload-artifact@v2
