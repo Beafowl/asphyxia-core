@@ -333,7 +333,7 @@ const ICONV2XML: { [key: string]: string } = {
   'utf8': 'UTF-8',
 };
 
-const XML2ICONV: { [key: string]: KBinEncoding } = {
+export const XML2ICONV: { [key: string]: KBinEncoding } = {
   'shift_jis': 'shift_jis',
   'shift-jis': 'shift_jis',
   'shiftjis': 'shift_jis',
@@ -445,7 +445,7 @@ function nodeToBinary(
   dataBuf: WriteBuffer,
   encoding: KBinEncoding,
   compressed: boolean,
-  path: string[] = [],
+  path: string[] = []
 ): void {
   path.push(name);
   const jpEncoding = encoding;
@@ -559,7 +559,7 @@ function nodeToBinary(
         nodeToBinary(childNode, child, nodeBuf, dataBuf, encoding, compressed, path);
       }
     } catch (err) {
-      throw { path, err }
+      throw { path, err };
     }
   }
 

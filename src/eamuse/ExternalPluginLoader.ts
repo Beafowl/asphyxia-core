@@ -1,4 +1,5 @@
-import { kitem, karray, kattr, dataToXML, xmlToData } from '../utils/KBinJSON';
+import { kitem, karray, kattr, dataToXML, xmlToData, KBinEncoding } from '../utils/KBinJSON';
+import iconv from 'iconv-lite';
 import path from 'path';
 import {
   getAttr,
@@ -46,7 +47,6 @@ import _ from 'lodash';
 import { isPlainObject } from 'lodash';
 import { VERSION } from '../utils/Consts';
 import { card2nfc, nfc2card } from '../utils/CardCipher';
-import LzKN from '../utils/LzKN';
 
 /** Caller Detection */
 export function GetCallerPlugin(): string {
@@ -185,6 +185,12 @@ export function LoadExternalPlugins() {
       } catch {
         return null;
       }
+    },
+    EncodeString: (str: string, encoding: KBinEncoding) => {
+      return iconv.encode(str, encoding);
+    },
+    DecodeString: (buffer: Buffer, encoding: KBinEncoding) => {
+      return iconv.decode(buffer, encoding);
     },
   };
 

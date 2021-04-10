@@ -60,7 +60,7 @@ async function sanitization(gameCode: string, data: any, refMap: any = {}) {
         for (const attr in data[prop]) {
           if (typeof data[prop][attr] == 'string') {
             const refid = await refmap(gameCode, data[prop][attr], refMap);
-            if (!refid) return null;
+            if (refid == null) return null;
             data['@attr'][attr] = refid;
           }
         }
@@ -68,7 +68,7 @@ async function sanitization(gameCode: string, data: any, refMap: any = {}) {
         const content = data['@content'];
         if (typeof content == 'string') {
           const refid = await refmap(gameCode, content, refMap);
-          if (!refid) return null;
+          if (refid == null) return null;
           data['@content'] = refid;
         }
       } else {
@@ -291,7 +291,7 @@ export class EamusePlugin {
     let handler = this.routes[`${moduleName}.${method}`];
 
     const sanitized = await sanitization(info.gameCode, data);
-    if (!sanitized) {
+    if (sanitized == null) {
       return false;
     }
 

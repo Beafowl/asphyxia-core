@@ -123,7 +123,7 @@ declare interface FileOption {
   accept?: string;
   /**
    * Whether the file is required for the plugin to work, defaults to false.
-   * 
+   *
    * Note that this only provides visual hint for the file in WebUI.
    */
   required?: boolean;
@@ -856,7 +856,7 @@ declare namespace IO {
    * If a file descriptor is provided, the underlying file will _not_ be closed automatically.
    * @param options An object that may contain an optional flag.
    * If a flag is not provided, it defaults to `'r'`.
-   * 
+   *
    * Returns null if any error occurs while reading a file
    */
   function ReadFile(
@@ -870,7 +870,7 @@ declare namespace IO {
    * If a file descriptor is provided, the underlying file will _not_ be closed automatically.
    * @param options Either the encoding for the result, or an object that contains the encoding and an optional flag.
    * If a flag is not provided, it defaults to `'r'`.
-   * 
+   *
    * Returns null if any error occurs while reading a file
    */
   function ReadFile(
@@ -884,7 +884,7 @@ declare namespace IO {
    * If a file descriptor is provided, the underlying file will _not_ be closed automatically.
    * @param options Either the encoding for the result, or an object that contains the encoding and an optional flag.
    * If a flag is not provided, it defaults to `'r'`.
-   * 
+   *
    * Returns null if any error occurs while reading a file
    */
   function ReadFile(
@@ -896,7 +896,7 @@ declare namespace IO {
    * Asynchronously reads the entire contents of a file.
    * @param path A path to a file.
    * If a file descriptor is provided, the underlying file will _not_ be closed automatically.
-   * 
+   *
    * Returns null if any error occurs while reading a file.
    */
   function ReadFile(path: string): Promise<Buffer | null>;
@@ -931,7 +931,7 @@ declare namespace U {
 
   /**
    * Convert Card Number / Data Transfer Number to NFC serial
-   * 
+   *
    * returns null if the card number is invalid
    * @param card Card Number / Data Transfer Number
    */
@@ -939,11 +939,29 @@ declare namespace U {
 
   /**
    * Convert NFC serial to Card Number or Data Transfer Number
-   * 
+   *
    * returns null if the nfc serial is invalid
    * @param card Card Number or Data Transfer Number
    */
   function NFC2Card(nfc: string): string | null;
+
+  /**
+   * Encode a string into a specified encoding
+   *
+   * returns a binary buffer
+   * @param str string to encode
+   * @param encoding see [[KEncoding]]
+   */
+  function EncodeString(str: string, encoding: KEncoding): Buffer;
+
+  /**
+   * Decode a string from a specified encoding
+   *
+   * returns a string
+   * @param buffer binary data to  decode
+   * @param encoding see [[KEncoding]]
+   */
+  function DecodeString(buffer: Buffer, encoding: KEncoding): string;
 }
 
 /** @ignore */
