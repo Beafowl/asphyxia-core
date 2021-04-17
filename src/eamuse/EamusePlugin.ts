@@ -16,30 +16,40 @@ import {
 
 import { compile } from 'pug';
 import { CONFIG } from '../utils/ArgConfig';
+import { nfc2card } from '../utils/CardCipher';
 
-async function refmap(gameCode: string, str: string, refMap: any): Promise<string> {
-  const regex = /(^|\s*)([0|E][A-F|a-f|0-9]{15})($|\s+)/g;
+async function cardSanitizer(gameCode: string, str: string, refMap: any): Promise<string> {
+  const regex = /(^|[^A-F|a-f|0-9])([0|E][A-F|a-f|0-9]{15})($|[^A-F|a-f|0-9])/g;
   if (typeof str !== 'string') {
     return str;
   }
 
   for (const match of str.match(regex) || []) {
-    const cid = match.trim();
+    const parts = match.match(/(^|[^A-F|a-f|0-9])([0|E][A-F|a-f|0-9]{15})($|[^A-F|a-f|0-9])/);
+    const cid = parts && parts[2];
+
+    if (!cid) throw new Error('no card');
 
     if (refMap[cid]) break;
 
-    const card = await FindCard(cid);
-    if (!card) {
-      const profileCount = await GetProfileCount();
-      if (profileCount < 0 || profileCount >= 16) return null;
-      const newProfile = await CreateProfile('unset', gameCode);
-      if (!newProfile) return null;
-      const newCard = await CreateCard(cid, newProfile.__refid);
-      if (!newCard) return null;
-      refMap[cid] = newCard.__refid;
-    } else {
-      refMap[cid] = card.__refid;
-      await BindProfile(card.__refid, gameCode);
+    try {
+      const did = nfc2card(cid);
+      const card = await FindCard(cid);
+      if (!card) {
+        const profileCount = await GetProfileCount();
+        if (profileCount < 0 || profileCount >= 16) return null;
+        const newProfile = await CreateProfile('unset', gameCode);
+        if (!newProfile) return null;
+        const newCard = await CreateCard(cid, newProfile.__refid);
+        if (!newCard) return null;
+        refMap[cid] = `${newCard.__refid}|${did}`;
+      } else {
+        refMap[cid] = `${card.__refid}|${did}`;
+        await BindProfile(card.__refid, gameCode);
+      }
+    } catch (err) {
+      // allow these through
+      return str;
     }
   }
   return str.replace(regex, (_, start, card, end) => {
@@ -59,7 +69,7 @@ async function sanitization(gameCode: string, data: any, refMap: any = {}) {
       if (prop == '@attr') {
         for (const attr in data[prop]) {
           if (typeof data[prop][attr] == 'string') {
-            const refid = await refmap(gameCode, data[prop][attr], refMap);
+            const refid = await cardSanitizer(gameCode, data[prop][attr], refMap);
             if (refid == null) return null;
             data['@attr'][attr] = refid;
           }
@@ -67,7 +77,7 @@ async function sanitization(gameCode: string, data: any, refMap: any = {}) {
       } else if (prop == '@content') {
         const content = data['@content'];
         if (typeof content == 'string') {
-          const refid = await refmap(gameCode, content, refMap);
+          const refid = await cardSanitizer(gameCode, content, refMap);
           if (refid == null) return null;
           data['@content'] = refid;
         }

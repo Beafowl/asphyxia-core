@@ -1,3 +1,8 @@
+## v1.31b
+
+- **CORE**: Fixed a problem where the nfcid checker is detecting non nfcids
+- **CORE**: Now, nfcid checker will provide both refid and cardid to plugins
+
 ## v1.31a
 
 - **CORE**: Fixed a problem where the xml parser fails on empty attributes
