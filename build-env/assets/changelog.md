@@ -1,3 +1,7 @@
+## v1.31c
+
+- **CORE**: Added a configable ICMP IP target for keepalive
+
 ## v1.31b
 
 - **CORE**: Fixed a problem where the nfcid checker is detecting non nfcids

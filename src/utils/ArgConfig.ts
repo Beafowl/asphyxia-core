@@ -100,9 +100,9 @@ function CoreConfig() {
   });
 
   CONFIG_MAP['core'].set('ping_ip', {
+    name: 'Ping IP',
     type: 'string',
     default: '127.0.0.1',
-    needRestart: true,
     desc: 'Use an ICMP pingable target to make your games think they are online',
   });
 
