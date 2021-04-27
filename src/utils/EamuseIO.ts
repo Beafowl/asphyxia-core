@@ -506,9 +506,15 @@ function CheckQuery(query: any): any {
 }
 
 function CleanDoc(doc: any) {
-  for (const prop in doc) {
-    if (prop.startsWith('__') && prop != '__refid') {
-      delete doc[prop];
+  if (Array.isArray(doc)) {
+    for (const item of doc) {
+      CleanDoc(item);
+    }
+  } else {
+    for (const prop in doc) {
+      if (prop.startsWith('__') && prop != '__refid') {
+        delete doc[prop];
+      }
     }
   }
   return doc;
@@ -542,15 +548,9 @@ export async function APIFindOne(plugin: PluginDetect, arg1: string | any, arg2?
 
   const DB = await GET_DB(plugin.name);
   if (!DB) throw new Error(`database failed to load`);
-  return await DB.findOne(
-    query,
-    plugin.core
-      ? {}
-      : {
-          __s: 0,
-          __collection: 0,
-        }
-  );
+
+  const result = await DB.findOne(query, {});
+  return plugin.core ? result : CleanDoc(result);
 }
 
 export async function APIFind(plugin: PluginDetect, arg1: string | any, arg2?: any) {
@@ -581,17 +581,8 @@ export async function APIFind(plugin: PluginDetect, arg1: string | any, arg2?: a
   const DB = await GET_DB(plugin.name);
   if (!DB) throw new Error(`database failed to load`);
 
-  return (await DB.find<any>(
-    query,
-    plugin.core
-      ? {}
-      : {
-          __s: 0,
-          __collection: 0,
-        }
-  )
-    .sort({ createdAt: 1 })
-    .exec()) as any[];
+  const result = await DB.find<any>(query, {}).sort({ createdAt: 1 }).exec();
+  return plugin.core ? result : (CleanDoc(result) as any[]);
 }
 
 export async function APIInsert(plugin: PluginDetect, arg1: string | any, arg2?: any) {

@@ -1,6 +1,10 @@
+## v1.31d
+
+- **CORE**: Fixed a issue where plugins have problem updating migrated data.
+
 ## v1.31c
 
-- **CORE**: Added a configable ICMP IP target for keepalive
+- **CORE**: Added a configurable ICMP IP target for keepalive
 
 ## v1.31b
 
