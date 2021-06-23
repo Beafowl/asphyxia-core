@@ -20,15 +20,16 @@ import { nfc2card } from '../utils/CardCipher';
 
 async function cardSanitizer(gameCode: string, str: string, refMap: any): Promise<string> {
   const regex = /(^|[^A-Za-z0-9])((?:01[A-Fa-f0-9]{14})|(?:E004[A-Fa-f0-9]{12}))($|[^A-Za-z0-9=\-_,+\/])/g;
+  const regexI = /(^|[^A-Za-z0-9])((?:01[A-Fa-f0-9]{14})|(?:E004[A-Fa-f0-9]{12}))($|[^A-Za-z0-9=\-_,+\/])/;
   if (typeof str !== 'string') {
     return str;
   }
 
   for (const match of str.match(regex) || []) {
-    const parts = match.match(regex);
+    const parts = match.match(regexI);
     const cid = parts && parts[2];
 
-    if (!cid) throw new Error('no card');
+    if (!cid) return str;
 
     if (refMap[cid]) break;
 

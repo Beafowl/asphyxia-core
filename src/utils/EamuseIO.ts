@@ -85,7 +85,7 @@ const LoadDatabase = async (file: string) => {
 let CoreDB: nedb = null;
 export const LoadCoreDB = async () => {
   CoreDB = await LoadDatabase(COREDB_FILE);
-
+  
   if (!CoreDB) {
     process.exit(1);
   }
