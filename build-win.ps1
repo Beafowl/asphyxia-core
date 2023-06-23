@@ -33,8 +33,11 @@ Set-Location -Path ".."
 
 # Packing
 Write-Output "Packing binaries"
-npx pkg .\build-env -t "node12.16.1-win-x64,node12.16.1-win-x86" -o .\build\asphyxia-core --options no-warnings
+npx pkg .\build-env -t "node16-win-x64" -o .\build\asphyxia-core-x64 --options no-warnings
+
 
 # Packing zips
 Compress-Archive -Path ".\build\asphyxia-core-x64.exe", ".\plugins" -DestinationPath ".\build\asphyxia-core-win-x64.zip" -Force
-Compress-Archive -Path ".\build\asphyxia-core-x86.exe", ".\plugins" -DestinationPath ".\build\asphyxia-core-win-x86.zip" -Force
+
+# Temporary remove x86 support, until solution found
+# Compress-Archive -Path ".\build\asphyxia-core-x86.exe", ".\plugins" -DestinationPath ".\build\asphyxia-core-win-x86.zip" -Force
