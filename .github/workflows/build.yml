@@ -36,11 +36,11 @@ jobs:
         with:
           submodules: 'recursive'
       - run: bash build-arm-pre.sh
-      - uses: uraimo/run-on-arch-action@v2.0.5
+      - uses: uraimo/run-on-arch-action@v2.5.0
         name: Run commands
         id: runcmd
         with:
-          arch: armv7
+          arch: arm64
           distro: ubuntu20.04
 
           githubToken: ${{ github.token }}
@@ -52,7 +52,7 @@ jobs:
             apt-get install -y nodejs
 
           run: |
-            sudo bash build-arm-build.sh
+            bash build-arm-build.sh
       - run: bash build-arm-post.sh
       - uses: actions/upload-artifact@v2
         with:
