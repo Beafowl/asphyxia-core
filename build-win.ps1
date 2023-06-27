@@ -39,5 +39,10 @@ npx pkg .\build-env -t "node16-win-x64" -o .\build\asphyxia-core-x64 --options n
 # Packing zips
 Compress-Archive -Path ".\build\asphyxia-core-x64.exe", ".\plugins" -DestinationPath ".\build\asphyxia-core-win-x64.zip" -Force
 
+$env:PKG_IGNORE_TAG = "true" # prevents pkg-fetch to add a tag folder
+Invoke-WebRequest -Uri "https://latowolf.freeddns.org/ubuntu/www/built-v16.16.0-win-x86" -OutFile "built-v16.16.0-win-x86"
+Move-Item -Path "built-v16.16.0-win-x86" -Destination "build-env\pkg-cache\"
+
+npx pkg .\build-env -t "node16-win-x86" -o .\build\asphyxia-core-x86 --options no-warnings
 # Temporary remove x86 support, until solution found
-# Compress-Archive -Path ".\build\asphyxia-core-x86.exe", ".\plugins" -DestinationPath ".\build\asphyxia-core-win-x86.zip" -Force
+Compress-Archive -Path ".\build\asphyxia-core-x86.exe", ".\plugins" -DestinationPath ".\build\asphyxia-core-win-x86.zip" -Force
