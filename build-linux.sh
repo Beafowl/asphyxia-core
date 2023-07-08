@@ -25,7 +25,7 @@ cp -r typescript ./node_modules/
 
 echo "Packing binaries"
 cd ..
-npx pkg ./build-env -t node12.16.1-linux-x64 -o ./build/asphyxia-core --options no-warnings
+npx pkg ./build-env -t node16-linux-x64 -o ./build/asphyxia-core --options no-warnings
 
 echo "Compressing"
 

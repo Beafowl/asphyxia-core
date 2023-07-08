@@ -9,7 +9,7 @@ jobs:
           submodules: 'recursive'
       - uses: actions/setup-node@v1
         with:
-          node-version: '12.16.1'
+          node-version: '16.20.1'
       - run: bash build-linux.sh
       - uses: actions/upload-artifact@v2
         with:
@@ -23,38 +23,67 @@ jobs:
           submodules: 'recursive'
       - uses: actions/setup-node@v1
         with:
-          node-version: '12.16.1'
+          node-version: '16.20.1'
       - run: pwsh build-win.ps1
       - uses: actions/upload-artifact@v2
         with:
           name: core-artifact-windows
           path: build/*.zip
-  build-arm:
+  build-arm64:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
         with:
           submodules: 'recursive'
       - run: bash build-arm-pre.sh
-      - uses: uraimo/run-on-arch-action@v2.0.5
+      - uses: uraimo/run-on-arch-action@v2.5.0
         name: Run commands
         id: runcmd
         with:
-          arch: armv7
-          distro: ubuntu18.04
+          arch: aarch64
+          distro: ubuntu20.04
 
           githubToken: ${{ github.token }}
 
           install: |
             apt-get update
             apt-get install -y curl zip
-            curl -sL https://deb.nodesource.com/setup_12.x | bash -
+            curl -sL https://deb.nodesource.com/setup_16.x | bash -
             apt-get install -y nodejs
 
           run: |
-            bash build-arm-build.sh
-      - run: bash build-arm-post.sh
+            bash build-arm64-build.sh
+      - run: bash build-arm64-post.sh
       - uses: actions/upload-artifact@v2
         with:
-          name: core-artifact-arm
+          name: core-artifact-arm64
+          path: build/*.zip
+  build-armv7:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: 'recursive'
+      - run: bash build-arm-pre.sh
+      - uses: uraimo/run-on-arch-action@v2.5.0
+        name: Run commands
+        id: runcmd
+        with:
+          arch: armv7
+          distro: ubuntu20.04
+
+          githubToken: ${{ github.token }}
+
+          install: |
+            apt-get update
+            apt-get install -y curl zip
+            curl -sL https://deb.nodesource.com/setup_16.x | bash -
+            apt-get install -y nodejs
+
+          run: |
+            bash build-armv7-build.sh
+      - run: bash build-armv7-post.sh
+      - uses: actions/upload-artifact@v2
+        with:
+          name: core-artifact-armv7
           path: build/*.zip
