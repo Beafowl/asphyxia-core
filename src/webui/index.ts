@@ -350,25 +350,25 @@ webui.post(
     try {
       switch (command) {
         case 'FindOne':
-          res.json(await (APIFindOne as any)({ idendifier: plugin, core: false }, ...args));
+          res.json(await (APIFindOne as any)({ identifier: plugin, core: false }, ...args));
           break;
         case 'Find':
-          res.json(await (APIFind as any)({ idendifier: plugin, core: false }, ...args));
+          res.json(await (APIFind as any)({ identifier: plugin, core: false }, ...args));
           break;
         case 'Insert':
-          res.json(await (APIInsert as any)({ idendifier: plugin, core: false }, ...args));
+          res.json(await (APIInsert as any)({ identifier: plugin, core: false }, ...args));
           break;
         case 'Remove':
-          res.json(await (APIRemove as any)({ idendifier: plugin, core: false }, ...args));
+          res.json(await (APIRemove as any)({ identifier: plugin, core: false }, ...args));
           break;
         case 'Update':
-          res.json(await (APIUpdate as any)({ idendifier: plugin, core: false }, ...args));
+          res.json(await (APIUpdate as any)({ identifier: plugin, core: false }, ...args));
           break;
         case 'Upsert':
-          res.json(await (APIUpsert as any)({ idendifier: plugin, core: false }, ...args));
+          res.json(await (APIUpsert as any)({ identifier: plugin, core: false }, ...args));
           break;
         case 'Count':
-          res.json(await (APICount as any)({ idendifier: plugin, core: false }, ...args));
+          res.json(await (APICount as any)({ identifier: plugin, core: false }, ...args));
           break;
       }
     } catch (err) {

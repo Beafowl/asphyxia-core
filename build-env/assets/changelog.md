@@ -1,16 +1,20 @@
+## v1.50c
+
+- **CORE**: Fix a problem where undefined database is being loaded when using the Query Shell under `--dev` mode
+
 ## v1.50b
 
 - **CORE**: Swapped the `nedb` dependency to `@seald-io/nedb`
 
 ## v1.50a
 
-- **API**: Extended `R.WebUIEvent` to allow the handler to respond with data.
-- **WebUI**: `emit()` function now returns an axios promise, in which you can grab the response data.
+- **API**: Extended `R.WebUIEvent` to allow the handler to respond with data
+- **WebUI**: `emit()` function now returns an axios promise, in which you can grab the response data
 
 ## v1.40d
 
-- **API**: Added `R.ExtraModuleHandler` to allow plugins to define extra modules.
-- **Misc**: Fixed a problem where binary data was accidentally treated as card number.
+- **API**: Added `R.ExtraModuleHandler` to allow plugins to define extra modules
+- **Misc**: Fixed a problem where binary data was accidentally treated as card number
 
 ## v1.31d
 
