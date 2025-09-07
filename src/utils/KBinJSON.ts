@@ -505,6 +505,16 @@ function nodeToBinary(
         binaryType = 'u8';
       }
 
+      // Normalize missing or malformed content so kencode doesn't crash.
+      if (value === null || value === undefined) {
+        // If node is flagged as array (via __count), default to an empty array.
+        // Otherwise default to a single zero value for numeric types.
+        value = isArray ? [] : [0];
+      } else if (!Array.isArray(value)) {
+        // Ensure numeric/binary values are arrays for the writer APIs.
+        value = [value as number | bigint];
+      }
+
       if (isArray) {
         dataBuf.writeArray(binaryType as BinaryLengthType, value as (number | bigint)[]);
       } else {
