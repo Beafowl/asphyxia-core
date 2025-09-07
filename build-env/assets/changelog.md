@@ -1,3 +1,6 @@
+## v1.50d
+- **CORE**: Fix a problem where `kencode` would crash if any array is empty
+
 ## v1.50c
 
 - **CORE**: Fix a problem where undefined database is being loaded when using the Query Shell under `--dev` mode
