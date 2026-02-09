@@ -184,6 +184,11 @@ webui.post(
       return res.render('signup', { error: 'Username already exists.', old });
     }
 
+    // Update the profile name to match the signup username
+    if (card.__refid) {
+      await UpdateProfile(card.__refid, { name: username });
+    }
+
     req.session.user = { username, cardNumber: nfcId, admin: false };
     res.redirect('/');
   })
@@ -319,11 +324,14 @@ webui.post(
     if (!code) return res.status(400).json({ success: false, description: 'Missing code' });
 
     const https = require('https');
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const redirectUri = `${protocol}://${host}/tachi/callback`;
     const postData = JSON.stringify({
       client_id: TACHI_CLIENT_ID,
       client_secret: TACHI_CLIENT_SECRET,
       grant_type: 'authorization_code',
-      redirect_uri: 'http://localhost:8083/tachi/callback',
+      redirect_uri: redirectUri,
       code,
     });
 
