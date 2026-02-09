@@ -43,11 +43,12 @@ block content
                     span.icon.is-small
                       i.mdi.mdi-table
                     span Query
-                button.button.is-danger.is-outlined.jb-modal.data-delete-button(disabled=!plugin.hasData data-target="confirm-modal" deleting=plugin.id deleting-name=plugin.id)
-                  span.icon.is-small
-                    i.mdi.mdi-trash-can
-                  span Delete
-          
+                if admin
+                  button.button.is-danger.is-outlined.jb-modal.data-delete-button(disabled=!plugin.hasData data-target="confirm-modal" deleting=plugin.id deleting-name=plugin.id)
+                    span.icon.is-small
+                      i.mdi.mdi-trash-can
+                    span Delete
+
 block modal
   +confirm("Deleting all data of", "/data/")
     p
