@@ -405,105 +405,16 @@ webui.post(
       return res.status(400).json({ success: false, description: 'No scores to import' });
     }
 
-    const https = require('https');
-
-    const tachiGet = (urlPath: string): Promise<any> =>
-      new Promise((resolve, reject) => {
-        https
-          .get(
-            `${TACHI_BASE_URL}${urlPath}`,
-            { headers: { Authorization: `Bearer ${token}` } },
-            (r: any) => {
-              let body = '';
-              r.on('data', (c: string) => (body += c));
-              r.on('end', () => {
-                try {
-                  resolve(JSON.parse(body));
-                } catch {
-                  reject(new Error('Failed to parse Tachi response'));
-                }
-              });
-            }
-          )
-          .on('error', reject);
-      });
-
-    // Fetch Tachi PBs to filter out scores that are already equal or better on Tachi
-    const TACHI_LAMP_RANK: Record<string, number> = {
-      'FAILED': 0,
-      'CLEAR': 1,
-      'EXCESSIVE CLEAR': 2,
-      'ULTIMATE CHAIN': 3,
-      'PERFECT ULTIMATE CHAIN': 4,
-    };
-
-    let tachiPBMap: Record<string, { score: number; lampRank: number }> = {};
-    try {
-      const pbResult = await tachiGet('/api/v1/users/me/games/sdvx/Single/pbs/all');
-      if (pbResult.success) {
-        const { pbs, charts } = pbResult.body;
-        const chartMap: Record<string, any> = {};
-        for (const c of charts) chartMap[c.chartID] = c;
-
-        for (const pb of pbs) {
-          const chart = chartMap[pb.chartID];
-          if (!chart) continue;
-          const key = `${chart.data.inGameID}-${chart.difficulty}`;
-          tachiPBMap[key] = {
-            score: pb.scoreData.score,
-            lampRank: TACHI_LAMP_RANK[pb.scoreData.lamp] ?? -1,
-          };
-        }
-      }
-    } catch (err) {
-      Logger.error(`Failed to fetch Tachi PBs for export filtering: ${err}`);
-    }
-
-    // Filter: skip scores where BOTH score AND lamp are strictly worse, or both equal
-    const filteredScores: any[] = [];
-    let exportSkipped = 0;
-
-    for (const s of scores) {
-      const key = `${s.identifier}-${s.difficulty}`;
-      const tachiPB = tachiPBMap[key];
-
-      if (tachiPB) {
-        const localLampRank = TACHI_LAMP_RANK[s.lamp] ?? -1;
-
-        // Skip if both strictly worse
-        if (s.score < tachiPB.score && localLampRank < tachiPB.lampRank) {
-          exportSkipped++;
-          continue;
-        }
-
-        // Skip if both equal (nothing to improve)
-        if (s.score === tachiPB.score && localLampRank === tachiPB.lampRank) {
-          exportSkipped++;
-          continue;
-        }
-      }
-
-      filteredScores.push(s);
-    }
-
-    if (filteredScores.length === 0) {
-      return res.json({
-        success: true,
-        body: { scoreIDs: [], errors: [] },
-        _totalSent: 0,
-        _totalSkipped: exportSkipped,
-        _totalOriginal: scores.length,
-      });
-    }
-
     const batchManual = JSON.stringify({
       meta: {
         game: 'sdvx',
         playtype: 'Single',
         service: 'Asphyxia',
       },
-      scores: filteredScores,
+      scores,
     });
+
+    const https = require('https');
 
     const boundary = '----AsphyxiaTachi' + Date.now();
     const bodyParts = [
@@ -547,30 +458,9 @@ webui.post(
       importReq.end();
     });
 
-    importResult._totalSent = filteredScores.length;
-    importResult._totalSkipped = exportSkipped;
-    importResult._totalOriginal = scores.length;
-
     res.json(importResult);
   })
 );
-
-// EG v6 clear ordering: 0=none, 1=played, 2=clear, 3=excessive, 6=mxv, 4=uc, 5=puc
-const EG_CLEAR_RANK = [0, 1, 2, 3, 6, 4, 5];
-
-function getClearRank(clearValue: number): number {
-  const rank = EG_CLEAR_RANK.indexOf(clearValue);
-  return rank >= 0 ? rank : -1;
-}
-
-function isScoreWorse(
-  incoming: { score: number; clear: number },
-  existing: { score: number; clear: number }
-): boolean {
-  return (
-    incoming.score < existing.score && getClearRank(incoming.clear) < getClearRank(existing.clear)
-  );
-}
 
 webui.post(
   '/tachi/save-scores',
@@ -600,29 +490,26 @@ webui.post(
 
         if (existing && existing.length > 0) {
           const ex = existing[0];
+          // Update if incoming score is higher, or existing has missing grade
+          if (score.score > ex.score || score.clear > ex.clear || (!ex.grade && score.grade)) {
+            const update: any = {};
+            if (score.score > ex.score) update.score = score.score;
+            if (score.clear > ex.clear) update.clear = score.clear;
+            if (score.grade && (!ex.grade || score.grade > ex.grade)) update.grade = score.grade;
+            if (score.exscore && (!ex.exscore || score.exscore > ex.exscore))
+              update.exscore = score.exscore;
 
-          // Skip if incoming score is strictly worse in BOTH score AND lamp
-          if (isScoreWorse(score, ex)) {
-            skipped++;
-            continue;
-          }
-
-          // Build update with per-field max
-          const update: any = {};
-          if (score.score > ex.score) update.score = score.score;
-          if (getClearRank(score.clear) > getClearRank(ex.clear)) update.clear = score.clear;
-          if (score.grade && (!ex.grade || score.grade > ex.grade)) update.grade = score.grade;
-          if (score.exscore && (!ex.exscore || score.exscore > ex.exscore))
-            update.exscore = score.exscore;
-
-          if (Object.keys(update).length > 0) {
-            await APIUpdate(
-              plugin,
-              refid,
-              { collection: 'music', mid: score.mid, type: score.type },
-              { $set: update }
-            );
-            saved++;
+            if (Object.keys(update).length > 0) {
+              await APIUpdate(
+                plugin,
+                refid,
+                { collection: 'music', mid: score.mid, type: score.type },
+                { $set: update }
+              );
+              saved++;
+            } else {
+              skipped++;
+            }
           } else {
             skipped++;
           }
