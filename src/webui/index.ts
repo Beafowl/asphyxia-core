@@ -205,6 +205,11 @@ webui.get('/help/card-number', (_req, res) => {
   res.render('help_card_number');
 });
 
+// Tachi config endpoint (before auth middleware - needed by client-side JS)
+webui.get('/tachi/config', (_req, res) => {
+  res.json({ clientId: CONFIG.tachi_client_id || '' });
+});
+
 // Tachi OAuth callback (before auth middleware - opened in popup without session)
 webui.get('/tachi/callback', (req, res) => {
   const code = req.query.code as string;
@@ -312,8 +317,6 @@ webui.post(
 );
 
 // Tachi API endpoints
-const TACHI_CLIENT_ID = 'CI9339507b051068964d992b471e1d051bfda25e65';
-const TACHI_CLIENT_SECRET = 'CS75ceb8312e17588e6a3061ddd928f431f61897b8';
 const TACHI_BASE_URL = 'https://kamai.tachi.ac';
 
 webui.post(
@@ -328,8 +331,8 @@ webui.post(
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const redirectUri = `${protocol}://${host}/tachi/callback`;
     const postData = JSON.stringify({
-      client_id: TACHI_CLIENT_ID,
-      client_secret: TACHI_CLIENT_SECRET,
+      client_id: CONFIG.tachi_client_id,
+      client_secret: CONFIG.tachi_client_secret,
       grant_type: 'authorization_code',
       redirect_uri: redirectUri,
       code,

@@ -137,6 +137,20 @@ function CoreConfig() {
       desc: 'Open WebUI when you launch Asphyxia CORE',
     });
   }
+
+  CONFIG_MAP['core'].set('tachi_client_id', {
+    name: 'Tachi Client ID',
+    type: 'string',
+    default: '',
+    desc: 'OAuth Client ID for Kamaitachi integration',
+  });
+
+  CONFIG_MAP['core'].set('tachi_client_secret', {
+    name: 'Tachi Client Secret',
+    type: 'string',
+    default: '',
+    desc: 'OAuth Client Secret for Kamaitachi integration',
+  });
 }
 CoreConfig();
 
