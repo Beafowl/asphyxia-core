@@ -621,8 +621,7 @@ webui.get(
     };
 
     const scores: any[] = [];
-    const limit = Math.min(pbs.length, 50);
-    for (let i = 0; i < limit; i++) {
+    for (let i = 0; i < pbs.length; i++) {
       const pb = pbs[i];
       const chart = chartMap[pb.chartID];
       const song = songMap[pb.songID];
