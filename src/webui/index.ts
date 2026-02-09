@@ -567,7 +567,7 @@ webui.get(
           .on('error', reject);
       });
 
-    const result = await tachiGet('/api/v1/users/me/games/sdvx/Single/pbs/best');
+    const result = await tachiGet('/api/v1/users/me/games/sdvx/Single/pbs/all');
     if (!result.success) {
       return res.json({ success: false, description: result.description || 'Failed to fetch PBs' });
     }
