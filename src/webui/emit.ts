@@ -1,13 +1,22 @@
-import { Router } from 'express';
+import { Router, Request } from 'express';
 import { urlencoded, json } from 'body-parser';
 import { ROOT_CONTAINER } from '../eamuse/index';
 import { Logger } from '../utils/Logger';
 import multer from 'multer';
-import { WriteFile, DeleteFile, Resolve } from '../utils/EamuseIO';
+import { WriteFile, DeleteFile, Resolve, FindCardsByRefid } from '../utils/EamuseIO';
 import { DATAFILE_MAP } from '../utils/ArgConfig';
 import { WebUISend } from '../eamuse/EamusePlugin';
 
 export const ajax = Router();
+
+async function emitUserOwnsProfile(req: Request, refid: string): Promise<boolean> {
+  if (!req.session.user) return false;
+  const cardNumber = req.session.user.cardNumber;
+  if (!cardNumber) return false;
+  const cards = await FindCardsByRefid(refid);
+  if (!cards || !Array.isArray(cards)) return false;
+  return cards.some((c: any) => c.cid === cardNumber || c.print === cardNumber);
+}
 
 ajax.post(
   '/emit/:event',
@@ -32,6 +41,16 @@ ajax.post(
     }
 
     const event = req.params.event;
+
+    // Protect profile update events: only admin or profile owner
+    if (event === 'updateProfile' && req.body.refid) {
+      const isAdmin = req.session.user && req.session.user.admin;
+      const isOwner = await emitUserOwnsProfile(req, req.body.refid);
+      if (!isAdmin && !isOwner) {
+        res.sendStatus(403);
+        return;
+      }
+    }
 
     let sent = false;
 

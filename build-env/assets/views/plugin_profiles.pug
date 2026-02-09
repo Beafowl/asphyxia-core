@@ -39,10 +39,11 @@ block content
                         span.icon.is-small
                           i.mdi.mdi-account-edit
                         span Detail
-                    button.button.is-danger.is-outlined.jb-modal.data-delete-button(data-target="confirm-modal" deleting=profile.refid deleting-name=profile.coreProfile.name)
-                      span.icon.is-small
-                        i.mdi.mdi-trash-can
-                      span Delete
+                    if isAdmin || profile.isOwner
+                      button.button.is-danger.is-outlined.jb-modal.data-delete-button(data-target="confirm-modal" deleting=profile.refid deleting-name=profile.coreProfile.name)
+                        span.icon.is-small
+                          i.mdi.mdi-trash-can
+                        span Delete
             else
               .card
                 header.card-header
@@ -66,10 +67,11 @@ block content
                         p.heading Data Usage
                         p.subtitle #{profile.dataSize}
                   .buttons.is-right
-                    button.button.is-danger.is-outlined.jb-modal.data-delete-button(data-target="confirm-modal" deleting=profile.refid deleting-name="<Invalid Profile>")
-                      span.icon.is-small
-                        i.mdi.mdi-trash-can
-                      span Delete
+                    if isAdmin
+                      button.button.is-danger.is-outlined.jb-modal.data-delete-button(data-target="confirm-modal" deleting=profile.refid deleting-name="<Invalid Profile>")
+                        span.icon.is-small
+                          i.mdi.mdi-trash-can
+                        span Delete
     else
       section.section
         .content.has-text-grey.has-text-centered
@@ -77,7 +79,7 @@ block content
             span.icon.is-large
               i.mdi.mdi-emoticon-happy.mdi-48px
           p Nothing's here yet. Let's play!
-      
+
 block modal
   +confirm("Deleting game data of", "profile/")
     p

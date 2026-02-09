@@ -16,3 +16,6 @@ block content
 
 block scripts
   script var refid = "#{refid}";
+  script var isAdmin = !{isAdmin ? 'true' : 'false'};
+  script var isOwner = !{isOwner ? 'true' : 'false'};
+  script var canEdit = isAdmin || isOwner;

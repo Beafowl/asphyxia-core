@@ -15,3 +15,7 @@ build-env/*
 .vscode
 .vs
 .env
+.claude/
+nul
+plugins/
+config.ini

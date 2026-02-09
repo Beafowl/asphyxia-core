@@ -33,7 +33,7 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
     meta(name="viewport", content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0")
     title Asphyxia CORE - #{title}
       if subtitle
-        | 
+        |
         | &gt; #{subtitle}
     link(rel="stylesheet", href="/static/css/bulma.min.css")
     link(rel="stylesheet", href="/static/css/margin.min.css")
@@ -91,6 +91,23 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
                   span.icon
                     i.mdi.mdi-power
                   span Shutdown CORE
+            .navbar-item.has-dropdown.has-dropdown-with-icons.has-divider.is-hoverable
+              a.navbar-link.is-arrowless
+                span.icon
+                  i.mdi.mdi-account-circle
+                span #{user}
+                span.icon
+                  i.mdi.mdi-chevron-down
+              .navbar-dropdown.is-right
+                a.navbar-item(href="/account")
+                  span.icon
+                    i.mdi.mdi-account-cog
+                  span Account Settings
+                hr.navbar-divider
+                a.navbar-item(href="/logout")
+                  span.icon
+                    i.mdi.mdi-logout
+                  span Logout
       aside.aside.is-placed-left.is-expanded(data-simplebar)
         .aside-tools
           .aside-tools-label
@@ -101,6 +118,9 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
             +li_menu_item("desktop-mac", "Dashboard", "/")
             +li_menu_item("account-circle", "Profiles", "/profiles")
             +li_menu_item("database", "Data Management", "/data")
+            +li_menu_item("account-cog", "Account", "/account")
+            if admin
+              +li_menu_item("account-group", "Users", "/users")
             +li_menu_item("help-circle", "About", "/about")
           p.menu-label Plugins
           ul.menu-list
@@ -119,29 +139,29 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
             p.title #{title}
               if subtitle
                 span.subtitle
-                  | 
+                  |
                   span.is-size-6.has-text-grey-light &gt;
-                  | 
+                  |
                   span.has-text-grey #{subtitle}
               if subsubtitle
                 span.subtitle
-                  | 
+                  |
                   span.is-size-6.has-text-grey-light &gt;
-                  | 
+                  |
                   span.has-text-grey #{subsubtitle}
-          
+
         block content
 
       footer.footer
         .content.has-text-centered
-          p 
+          p
             | Made with
             span.icon.has-text-danger
               i.mdi.mdi-heart
-            | by Team Asphyxia | Plugins by 
+            | by Team Asphyxia | Plugins by
             a(href="/about") Community
-      
+
       block modal
-      
+
       script(type="text/javascript" src="/static/js/main.js")
       block scripts

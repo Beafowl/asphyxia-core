@@ -1,10 +1,20 @@
-import { existsSync, mkdirSync, readFileSync, writeFile, readFile, readdir, unlink, WriteFileOptions } from 'fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFile,
+  readFile,
+  readdir,
+  unlink,
+  WriteFileOptions,
+} from 'fs';
 
 import { Logger } from './Logger';
 import path from 'path';
 import nedb from '@seald-io/nedb';
 import { nfc2card } from './CardCipher';
 import hashids from 'hashids/cjs';
+import bcrypt from 'bcryptjs';
 import { NAMES } from './Consts';
 import { CONFIG, ARGS } from './ArgConfig';
 import { isArray, get, isPlainObject, sortBy } from 'lodash';
@@ -465,6 +475,155 @@ export async function BindProfile(refid: string, gameCode: string) {
       },
       { $addToSet: { models: gameCode } }
     );
+  } catch (err) {
+    Logger.error(err);
+    return false;
+  }
+}
+
+// =========================================
+//             User Accounts
+// =========================================
+
+export async function SeedDefaultAdmin() {
+  try {
+    const existing = await CoreDB.findOneAsync<any>({ __s: 'user_account', admin: true });
+    if (existing) return;
+
+    const hash = await bcrypt.hash('admin', 10);
+    await CoreDB.insertAsync({
+      __s: 'user_account',
+      username: 'admin',
+      password: hash,
+      cardNumber: '',
+      admin: true,
+    });
+    Logger.info('Default admin account created (username: admin, password: admin)');
+  } catch (err) {
+    Logger.error(err);
+  }
+}
+
+export async function CreateUserAccount(
+  username: string,
+  password: string,
+  cardNumber: string,
+  admin: boolean = false
+) {
+  try {
+    const existing = await CoreDB.findOneAsync<any>({ __s: 'user_account', username });
+    if (existing) return null;
+
+    const hash = await bcrypt.hash(password, 10);
+    return await CoreDB.insertAsync({
+      __s: 'user_account',
+      username,
+      password: hash,
+      cardNumber,
+      admin,
+    });
+  } catch (err) {
+    Logger.error(err);
+    return null;
+  }
+}
+
+export async function AuthenticateUser(username: string, password: string) {
+  try {
+    const user = await CoreDB.findOneAsync<any>({ __s: 'user_account', username });
+    if (!user) return null;
+
+    const match = await bcrypt.compare(password, user.password);
+    return match ? user : null;
+  } catch (err) {
+    Logger.error(err);
+    return null;
+  }
+}
+
+export async function UpdateUserAccount(
+  username: string,
+  update: { username?: string; password?: string }
+) {
+  try {
+    const setFields: any = {};
+    if (update.username) setFields.username = update.username;
+    if (update.password) setFields.password = await bcrypt.hash(update.password, 10);
+
+    await CoreDB.updateAsync({ __s: 'user_account', username }, { $set: setFields });
+    return true;
+  } catch (err) {
+    Logger.error(err);
+    return false;
+  }
+}
+
+export async function GetAllUsers(): Promise<any[]> {
+  try {
+    return await CoreDB.findAsync<any>({ __s: 'user_account' }).sort({ createdAt: 1 }).execAsync();
+  } catch (err) {
+    Logger.error(err);
+    return [];
+  }
+}
+
+export async function SetUserAdmin(username: string, admin: boolean) {
+  try {
+    await CoreDB.updateAsync({ __s: 'user_account', username }, { $set: { admin } });
+    return true;
+  } catch (err) {
+    Logger.error(err);
+    return false;
+  }
+}
+
+export async function FindUserByUsername(username: string) {
+  try {
+    return await CoreDB.findOneAsync<any>({ __s: 'user_account', username });
+  } catch (err) {
+    Logger.error(err);
+    return null;
+  }
+}
+
+export async function FindUserByCardNumber(cardNumber: string) {
+  try {
+    return await CoreDB.findOneAsync<any>({ __s: 'user_account', cardNumber });
+  } catch (err) {
+    Logger.error(err);
+    return null;
+  }
+}
+
+export async function SaveTachiToken(username: string, token: string) {
+  try {
+    const existing = await CoreDB.findOneAsync<any>({ __s: 'tachi_token', username });
+    if (existing) {
+      await CoreDB.updateAsync({ __s: 'tachi_token', username }, { $set: { token } });
+    } else {
+      await CoreDB.insertAsync({ __s: 'tachi_token', username, token });
+    }
+    return true;
+  } catch (err) {
+    Logger.error(err);
+    return false;
+  }
+}
+
+export async function GetTachiToken(username: string): Promise<string | null> {
+  try {
+    const doc = await CoreDB.findOneAsync<any>({ __s: 'tachi_token', username });
+    return doc ? doc.token : null;
+  } catch (err) {
+    Logger.error(err);
+    return null;
+  }
+}
+
+export async function DeleteTachiToken(username: string) {
+  try {
+    await CoreDB.removeAsync({ __s: 'tachi_token', username }, {});
+    return true;
   } catch (err) {
     Logger.error(err);
     return false;

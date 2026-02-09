@@ -10,7 +10,7 @@ import chalk from 'chalk';
 import { LoadExternalPlugins } from './eamuse/ExternalPluginLoader';
 import { webui } from './webui/index';
 import path from 'path';
-import { ASSETS_PATH, LoadCoreDB } from './utils/EamuseIO';
+import { ASSETS_PATH, LoadCoreDB, SeedDefaultAdmin } from './utils/EamuseIO';
 import open from 'open';
 import { Migrate } from './utils/migration';
 
@@ -120,5 +120,7 @@ function Main() {
 }
 
 Migrate().then(() => {
-  LoadCoreDB().then(Main);
+  LoadCoreDB()
+    .then(() => SeedDefaultAdmin())
+    .then(Main);
 });

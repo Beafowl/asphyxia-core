@@ -32,12 +32,14 @@ block content
                     td.has-padding-top-7 #{profile.cards}
                     td.has-padding-right-5
                       .buttons.is-right.are-small
-                        a.button.is-primary(href=`/profile/${profile.__refid}` data-tooltip="Edit")
-                          span.icon
-                            i.mdi.mdi-account-edit.mdi-18px
-                        a.button.is-danger.jb-modal.data-delete-button(data-target="confirm-modal" deleting=profile.__refid deleting-name=profile.name data-tooltip="Delete")
-                          span.icon
-                            i.mdi.mdi-trash-can.mdi-18px
+                        if isAdmin || profile.isOwner
+                          a.button.is-primary(href=`/profile/${profile.__refid}` data-tooltip="Edit")
+                            span.icon
+                              i.mdi.mdi-account-edit.mdi-18px
+                        if isAdmin
+                          a.button.is-danger.jb-modal.data-delete-button(data-target="confirm-modal" deleting=profile.__refid deleting-name=profile.name data-tooltip="Delete")
+                            span.icon
+                              i.mdi.mdi-trash-can.mdi-18px
         else
           section.section
             .content.has-text-grey.has-text-centered
@@ -45,7 +47,7 @@ block content
                 span.icon.is-large
                   i.mdi.mdi-emoticon-happy.mdi-48px
               p Nothing's here yet. Let's play!
-              
+
 block modal
   +confirm("Deleting profile", "/profile/")
     p

@@ -367,3 +367,70 @@ a.tag.is-dark:hover {
   width: 75%;
   overflow-wrap: break-word;
 }
+
+/* Auth pages */
+.auth-body {
+  background-color: #f5f5f5;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-container {
+  width: 100%;
+  max-width: 420px;
+  padding: 1rem;
+}
+
+.auth-card {
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+}
+
+.auth-logo {
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: 0.5rem;
+}
+
+.auth-title {
+  margin-bottom: 2rem !important;
+}
+
+.auth-card .has-text-centered a {
+  margin-left: 0.3em;
+}
+
+.auth-card hr {
+  margin: 1rem 0;
+  background-color: #eee;
+  height: 1px;
+}
+
+.auth-card .button.is-info {
+  background-color: #0085dd;
+}
+
+.auth-card .button.is-info:hover {
+  background-color: #006bb3;
+}
+
+@media (prefers-color-scheme: dark) {
+  .auth-body {
+    background-color: #1a1a1e;
+  }
+
+  .auth-card {
+    background-color: #2a2a2e;
+    color: #dbdbdb;
+  }
+
+  .auth-card .label {
+    color: #dbdbdb;
+  }
+
+  .auth-card hr {
+    background-color: #363636;
+  }
+}
