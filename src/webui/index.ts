@@ -195,6 +195,11 @@ webui.get('/logout', (req, res) => {
   });
 });
 
+// Help pages (accessible without login)
+webui.get('/help/card-number', (_req, res) => {
+  res.render('help_card_number');
+});
+
 // Tachi OAuth callback (before auth middleware - opened in popup without session)
 webui.get('/tachi/callback', (req, res) => {
   const code = req.query.code as string;

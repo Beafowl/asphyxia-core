@@ -1,6 +1,7 @@
 # Getting version
 $VER_CODE = Select-String -Path ".\src\utils\Consts.ts" -Pattern "VERSION = '(.*)'"
 $VERSION = $VER_CODE.Matches.Groups[1].Value;
+$env:NODE_OPTIONS = "--openssl-legacy-provider"
 
 Write-Output "Building Version $VERSION for Windows"
 
@@ -10,7 +11,7 @@ New-Item -Path "." -Name "build" -ItemType "directory" -Force | Out-Null
 Write-Output "Copying windows node binary cache"
 New-Item -Path "$env:USERPROFILE" -Name ".pkg-cache" -ItemType "directory" -Force | Out-Null
 New-Item -Path "$env:USERPROFILE\.pkg-cache" -Name "v2.6" -ItemType "directory" -Force | Out-Null
-Copy-Item -Path "build-env\pkg-cache\*" -Destination "$env:USERPROFILE\.pkg-cache\v2.6" 
+Copy-Item -Path "build-env\pkg-cache\*" -Destination "$env:USERPROFILE\.pkg-cache\v2.6"
 
 
 Write-Output "NPM Install"

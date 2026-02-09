@@ -28,7 +28,9 @@ html
                 span.icon.is-small.is-left
                   i.mdi.mdi-account
             .field
-              label.label Card Number
+              div(style="display:flex;justify-content:space-between;align-items:baseline")
+                label.label.mb-0 Card Number
+                a.is-size-7.has-text-weight-normal(href="/help/card-number" target="_blank") Where do I find this?
               .control.has-icons-left
                 input.input(type="text" name="cardNumber" placeholder="Card Number" required value=(old && old.cardNumber ? old.cardNumber : ''))
                 span.icon.is-small.is-left
