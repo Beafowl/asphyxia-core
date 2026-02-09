@@ -517,7 +517,7 @@ webui.post(
         }
 
         // Insert new scores
-        await APIInsert(plugin, refid, {
+        const doc: any = {
           collection: 'music',
           mid: score.mid,
           type: score.type,
@@ -530,7 +530,12 @@ webui.post(
           volRate: 0,
           version: score.version || 6,
           dbver: 1,
-        });
+        };
+        if (score.timeAchieved) {
+          doc.createdAt = new Date(score.timeAchieved);
+          doc.updatedAt = new Date(score.timeAchieved);
+        }
+        await APIInsert(plugin, refid, doc);
         saved++;
       } catch (err) {
         Logger.error(`Failed to save Tachi score mid=${score.mid} type=${score.type}: ${err}`);
@@ -642,6 +647,7 @@ webui.get(
         clear,
         grade: GRADE_MAP[pb.scoreData.grade] || 0,
         exscore: pb.scoreData.optional?.exScore || 0,
+        timeAchieved: pb.timeAchieved || null,
         songName: song.title,
         difficulty: chart.difficulty,
         lamp: pb.scoreData.lamp,
