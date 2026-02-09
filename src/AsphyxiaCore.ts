@@ -41,7 +41,7 @@ function Main() {
   Logger.info('                                        \\__, \\__/ |  \\ |___ ');
   Logger.info('');
   Logger.info(chalk.cyanBright(pad(`CORE ${VERSION}`, 60)));
-  Logger.info(pad(`Brought you by Team Asphyxia`, 60));
+  Logger.info(pad(`Brought you by Team Asphyxia | Modified by Beafowl`, 60));
   Logger.info(` `);
   Logger.info(chalk.redBright(pad(`FREE SOFTWARE. BEWARE OF SCAMMERS.`, 60)));
   Logger.info(pad(`If you bought this software, request refund immediately.`, 60));
