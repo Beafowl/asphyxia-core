@@ -479,6 +479,12 @@ webui.post(
     let saved = 0;
     let skipped = 0;
 
+    // EG clear rank: 0=none, 1=played, 2=clear, 3=excessive, 6=mxv, 4=uc, 5=puc
+    const EG_CLEAR_RANK: Record<number, number> = { 0: 0, 1: 1, 2: 2, 3: 3, 6: 4, 4: 5, 5: 6 };
+    function clearRank(c: number) {
+      return EG_CLEAR_RANK[c] ?? 0;
+    }
+
     for (const score of scores) {
       try {
         // Check if score already exists for this refid
@@ -490,11 +496,15 @@ webui.post(
 
         if (existing && existing.length > 0) {
           const ex = existing[0];
-          // Update if incoming score is higher, or existing has missing grade
-          if (score.score > ex.score || score.clear > ex.clear || (!ex.grade && score.grade)) {
+          // Update if incoming score is higher, or clear is better (using proper EG ranking), or existing has missing grade
+          if (
+            score.score > ex.score ||
+            clearRank(score.clear) > clearRank(ex.clear) ||
+            (!ex.grade && score.grade)
+          ) {
             const update: any = {};
             if (score.score > ex.score) update.score = score.score;
-            if (score.clear > ex.clear) update.clear = score.clear;
+            if (clearRank(score.clear) > clearRank(ex.clear)) update.clear = score.clear;
             if (score.grade && (!ex.grade || score.grade > ex.grade)) update.grade = score.grade;
             if (score.exscore && (!ex.exscore || score.exscore > ex.exscore))
               update.exscore = score.exscore;
