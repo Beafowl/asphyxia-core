@@ -47,17 +47,17 @@ block content
                 i.mdi.mdi-information-outline
               | Information
           .card-content
-            p Homepage: 
+            p Homepage:
               a(href="https://asphyxia-core.github.io") https://asphyxia-core.github.io
             p
-              div Latest Community Plugins: 
+              div Latest Community Plugins:
               a(href="https://github.com/asphyxia-core/plugins") https://github.com/asphyxia-core/plugins
             p
-              | Asphyxia CORE is a 
+              | Asphyxia CORE is a
               b.has-text-danger FREE
-              | 
+              |
               | software made by and for the community. If you bought this software, you have been scammed.
-          
+
         .card
           header.card-header
             p.card-header-title
@@ -65,5 +65,6 @@ block content
                 i.mdi.mdi-format-list-bulleted
               | Changelog
           .card-content !{changelog}
-      .column
-        +form('CORE Settings', config, 'core')
+      if admin
+        .column
+          +form('CORE Settings', config, 'core')

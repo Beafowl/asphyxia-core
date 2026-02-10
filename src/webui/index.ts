@@ -62,6 +62,13 @@ import { Logger } from '../utils/Logger';
 
 const memorystore = createMemoryStore(session);
 
+const ADMIN_ONLY_PAGES = [
+  'startup flags',
+  'unlock events',
+  'update webui assets',
+  'weekly score attack',
+];
+
 declare module 'express-session' {
   interface SessionData {
     user?: { username: string; cardNumber: string; admin: boolean };
@@ -380,7 +387,37 @@ webui.get(
   '/tachi/status',
   wrap(async (req, res) => {
     const token = await GetTachiToken(req.session.user!.username);
-    res.json({ authorized: !!token });
+    if (!token) return res.json({ authorized: false });
+
+    // Validate token against Tachi
+    const https = require('https');
+    const valid: boolean = await new Promise(resolve => {
+      https
+        .get(
+          `${TACHI_BASE_URL}/api/v1/users/me`,
+          { headers: { Authorization: `Bearer ${token}` } },
+          (r: any) => {
+            let body = '';
+            r.on('data', (c: string) => (body += c));
+            r.on('end', () => {
+              try {
+                const data = JSON.parse(body);
+                resolve(data.success === true);
+              } catch {
+                resolve(false);
+              }
+            });
+          }
+        )
+        .on('error', () => resolve(false));
+    });
+
+    if (!valid) {
+      await DeleteTachiToken(req.session.user!.username);
+      return res.json({ authorized: false });
+    }
+
+    res.json({ authorized: true });
   })
 );
 
@@ -668,6 +705,71 @@ webui.get(
   })
 );
 
+webui.get(
+  '/tachi/pbs/best',
+  wrap(async (req, res) => {
+    const token = await GetTachiToken(req.session.user!.username);
+    if (!token)
+      return res.status(401).json({ success: false, description: 'Not authorized with Tachi' });
+
+    const https = require('https');
+
+    const tachiGet = (urlPath: string): Promise<any> =>
+      new Promise((resolve, reject) => {
+        https
+          .get(
+            `${TACHI_BASE_URL}${urlPath}`,
+            { headers: { Authorization: `Bearer ${token}` } },
+            (r: any) => {
+              let body = '';
+              r.on('data', (c: string) => (body += c));
+              r.on('end', () => {
+                try {
+                  resolve(JSON.parse(body));
+                } catch {
+                  reject(new Error('Failed to parse Tachi response'));
+                }
+              });
+            }
+          )
+          .on('error', reject);
+      });
+
+    const result = await tachiGet('/api/v1/users/me/games/sdvx/Single/pbs/best');
+    if (!result.success) {
+      return res.json({ success: false, description: result.description || 'Failed to fetch PBs' });
+    }
+
+    const { pbs, charts, songs } = result.body;
+
+    const chartMap: Record<string, any> = {};
+    for (const c of charts) chartMap[c.chartID] = c;
+
+    const songMap: Record<number, any> = {};
+    for (const s of songs) songMap[s.id] = s;
+
+    const scores: any[] = [];
+    for (let i = 0; i < pbs.length; i++) {
+      const pb = pbs[i];
+      const chart = chartMap[pb.chartID];
+      const song = chart ? songMap[chart.songID] : null;
+      if (!chart || !song) continue;
+
+      scores.push({
+        score: pb.scoreData.score,
+        lamp: pb.scoreData.lamp,
+        grade: pb.scoreData.grade,
+        songName: song.title,
+        difficulty: chart.difficulty,
+        level: chart.level,
+        vf: pb.calculatedData?.VF6 || 0,
+      });
+    }
+
+    res.json({ success: true, scores });
+  })
+);
+
 webui.use('/fun', fun);
 webui.use('/', emit);
 
@@ -713,7 +815,9 @@ function data(req: Request, title: string, plugin: string, attr?: any) {
         name: p.Name,
         id: p.Identifier,
         webOnly: p.GameCodes.length == 0,
-        pages: p.Pages.map(f => ({ name: startCase(f), link: f })),
+        pages: p.Pages.filter(f => req.session.user?.admin || !ADMIN_ONLY_PAGES.includes(f)).map(
+          f => ({ name: startCase(f), link: f })
+        ),
       };
     }),
     ...attr,
@@ -1207,15 +1311,21 @@ webui.get(
     const isAdmin = req.session.user!.admin;
     const isOwner = await userOwnsProfile(req, refid.toString());
 
+    if (page === 'profile_tachi' && !isAdmin && !isOwner) {
+      return res.redirect(`/plugin/${req.params['plugin']}/profile?refid=${refid}`);
+    }
+
     const content = await plugin.render(page, { query: req.query }, refid.toString());
     if (content == null) {
       return next();
     }
 
-    const tabs = plugin.ProfilePages.map(p => ({
-      name: startCase(p.substr(8)),
-      link: p.substr(8),
-    }));
+    const tabs = plugin.ProfilePages.filter(p => p !== 'profile_tachi' || isAdmin || isOwner).map(
+      p => ({
+        name: startCase(p.substr(8)),
+        link: p.substr(8),
+      })
+    );
 
     res.render(
       'custom_profile',
@@ -1245,6 +1355,10 @@ webui.get(
     }
 
     const pageName = req.params['page'];
+
+    if (ADMIN_ONLY_PAGES.includes(pageName) && !req.session.user!.admin) {
+      return res.redirect('/');
+    }
 
     const content = await plugin.render(pageName, { query: req.query });
     if (content == null) {
