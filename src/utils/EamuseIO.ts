@@ -630,6 +630,31 @@ export async function DeleteTachiToken(username: string) {
   }
 }
 
+export async function SaveTachiExportTimestamp(refid: string, timestamp: number) {
+  try {
+    const existing = await CoreDB.findOneAsync<any>({ __s: 'tachi_export_ts', refid });
+    if (existing) {
+      await CoreDB.updateAsync({ __s: 'tachi_export_ts', refid }, { $set: { timestamp } });
+    } else {
+      await CoreDB.insertAsync({ __s: 'tachi_export_ts', refid, timestamp });
+    }
+    return true;
+  } catch (err) {
+    Logger.error(err);
+    return false;
+  }
+}
+
+export async function GetTachiExportTimestamp(refid: string): Promise<number | null> {
+  try {
+    const doc = await CoreDB.findOneAsync<any>({ __s: 'tachi_export_ts', refid });
+    return doc ? doc.timestamp : null;
+  } catch (err) {
+    Logger.error(err);
+    return null;
+  }
+}
+
 export async function GetProfiles() {
   try {
     return (await CoreDB.findAsync<any>({

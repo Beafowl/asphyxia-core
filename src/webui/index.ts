@@ -49,6 +49,8 @@ import {
   SaveTachiToken,
   GetTachiToken,
   DeleteTachiToken,
+  SaveTachiExportTimestamp,
+  GetTachiExportTimestamp,
 } from '../utils/EamuseIO';
 import { urlencoded, json } from 'body-parser';
 import path from 'path';
@@ -429,6 +431,37 @@ webui.post(
   })
 );
 
+webui.get(
+  '/tachi/export-ts',
+  wrap(async (req, res) => {
+    const refid = req.query.refid as string;
+    if (!refid) return res.status(400).json({ success: false, description: 'Missing refid' });
+
+    const isAdmin = req.session.user!.admin;
+    const isOwner = await userOwnsProfile(req, refid);
+    if (!isAdmin && !isOwner) return res.sendStatus(403);
+
+    const timestamp = await GetTachiExportTimestamp(refid);
+    res.json({ success: true, timestamp });
+  })
+);
+
+webui.post(
+  '/tachi/save-export-ts',
+  json({ limit: '1mb' }),
+  wrap(async (req, res) => {
+    const { refid } = req.body;
+    if (!refid) return res.status(400).json({ success: false, description: 'Missing refid' });
+
+    const isAdmin = req.session.user!.admin;
+    const isOwner = await userOwnsProfile(req, refid);
+    if (!isAdmin && !isOwner) return res.sendStatus(403);
+
+    await SaveTachiExportTimestamp(refid, Date.now());
+    res.json({ success: true });
+  })
+);
+
 webui.post(
   '/tachi/import',
   json({ limit: '50mb' }),
@@ -516,10 +549,14 @@ webui.post(
     let saved = 0;
     let skipped = 0;
 
-    // EG clear rank: 0=none, 1=played, 2=clear, 3=excessive, 6=mxv, 4=uc, 5=puc
+    // Normalize clear values to a comparable ranking
+    // EG (version 6): 0=none, 1=played, 2=clear, 3=excessive, 4=uc, 5=puc, 6=mxv
+    // Nabla (version 7+): 0=none, 1=played, 2=clear, 3=excessive, 4=mxv, 5=uc, 6=puc
     const EG_CLEAR_RANK: Record<number, number> = { 0: 0, 1: 1, 2: 2, 3: 3, 6: 4, 4: 5, 5: 6 };
-    function clearRank(c: number) {
-      return EG_CLEAR_RANK[c] ?? 0;
+    const NABLA_CLEAR_RANK: Record<number, number> = { 0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6 };
+    function clearRank(c: number, version?: number) {
+      const map = version === 7 ? NABLA_CLEAR_RANK : EG_CLEAR_RANK;
+      return map[c] ?? 0;
     }
 
     for (const score of scores) {
@@ -533,15 +570,16 @@ webui.post(
 
         if (existing && existing.length > 0) {
           const ex = existing[0];
-          // Update if incoming score is higher, or clear is better (using proper EG ranking), or existing has missing grade
+          // Update if incoming score is higher, or clear is better (using normalized ranking), or existing has missing grade
           if (
             score.score > ex.score ||
-            clearRank(score.clear) > clearRank(ex.clear) ||
+            clearRank(score.clear, score.version) > clearRank(ex.clear, ex.version) ||
             (!ex.grade && score.grade)
           ) {
             const update: any = {};
             if (score.score > ex.score) update.score = score.score;
-            if (clearRank(score.clear) > clearRank(ex.clear)) update.clear = score.clear;
+            if (clearRank(score.clear, score.version) > clearRank(ex.clear, ex.version))
+              update.clear = score.clear;
             if (score.grade && (!ex.grade || score.grade > ex.grade)) update.grade = score.grade;
             if (score.exscore && (!ex.exscore || score.exscore > ex.exscore))
               update.exscore = score.exscore;
@@ -767,6 +805,66 @@ webui.get(
     }
 
     res.json({ success: true, scores });
+  })
+);
+
+// Nabla tools
+webui.post(
+  '/nabla/recalculate-vf',
+  json({ limit: '1mb' }),
+  wrap(async (req, res) => {
+    const { refid } = req.body;
+    if (!refid) {
+      return res.status(400).json({ success: false, description: 'Missing refid' });
+    }
+
+    const isAdmin = req.session.user!.admin;
+    const isOwner = await userOwnsProfile(req, refid);
+    if (!isAdmin && !isOwner) return res.sendStatus(403);
+
+    const musicDbPath = path.join(process.cwd(), 'music_db.json');
+    if (!existsSync(musicDbPath)) {
+      return res.status(500).json({ success: false, description: 'music_db.json not found' });
+    }
+    const mdb = JSON.parse(readFileSync(musicDbPath, 'utf8'));
+
+    const medalCoef = [0, 0.5, 1.0, 1.02, 1.04, 1.06, 1.1];
+    const gradeCoef = [0, 0.8, 0.82, 0.85, 0.88, 0.91, 0.94, 0.97, 1.0, 1.02, 1.05];
+    function computeForce(diff: number, score: number, medal: number, grade: number) {
+      return Math.floor(diff * (score / 10000000) * gradeCoef[grade] * medalCoef[medal] * 20);
+    }
+
+    const diffName = ['novice', 'advanced', 'exhaust', 'infinite', 'maximum', 'ultimate'];
+    const plugin = { identifier: 'sdvx@asphyxia', core: false };
+
+    const scores = await APIFind(plugin, refid, { collection: 'music', version: 7 });
+
+    let updated = 0;
+    for (const score of scores) {
+      const song = mdb.mdb.music.find((s: any) => String(s.id) === String(score.mid));
+      if (!song) continue;
+
+      const typeIndex = score.type;
+      const key =
+        typeIndex === 4
+          ? song.difficulty.maximum || song.difficulty.infinite
+          : song.difficulty[diffName[typeIndex]];
+      const diffLevel = parseFloat(key) || 0;
+      if (diffLevel === 0) continue;
+
+      const newVf = computeForce(diffLevel, score.score, score.clear, score.grade);
+      if (newVf !== score.volforce) {
+        await APIUpdate(
+          plugin,
+          refid,
+          { collection: 'music', mid: score.mid, type: score.type, version: 7 },
+          { $set: { volforce: newVf } }
+        );
+        updated++;
+      }
+    }
+
+    res.json({ success: true, total: scores.length, updated });
   })
 );
 
@@ -1311,7 +1409,8 @@ webui.get(
     const isAdmin = req.session.user!.admin;
     const isOwner = await userOwnsProfile(req, refid.toString());
 
-    if (page === 'profile_tachi' && !isAdmin && !isOwner) {
+    const ownerOnlyPages = ['profile_tachi', 'profile_nabla'];
+    if (ownerOnlyPages.includes(page) && !isAdmin && !isOwner) {
       return res.redirect(`/plugin/${req.params['plugin']}/profile?refid=${refid}`);
     }
 
@@ -1320,12 +1419,12 @@ webui.get(
       return next();
     }
 
-    const tabs = plugin.ProfilePages.filter(p => p !== 'profile_tachi' || isAdmin || isOwner).map(
-      p => ({
-        name: startCase(p.substr(8)),
-        link: p.substr(8),
-      })
-    );
+    const tabs = plugin.ProfilePages.filter(
+      p => !ownerOnlyPages.includes(p) || isAdmin || isOwner
+    ).map(p => ({
+      name: startCase(p.substr(8)),
+      link: p.substr(8),
+    }));
 
     res.render(
       'custom_profile',
