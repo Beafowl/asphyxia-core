@@ -28,6 +28,8 @@ function cleanIP(ip: string) {
 }
 
 function Main() {
+  ReadConfig();
+
   process.title = `${CONFIG.server_name || 'Asphyxia Core'} ${VERSION}`;
 
   Logger.info('                        _                _        ');
@@ -57,7 +59,6 @@ function Main() {
     Logger.info(``);
   }
 
-  ReadConfig();
   const external = LoadExternalPlugins();
   SaveConfig();
 
