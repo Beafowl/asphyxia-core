@@ -28,7 +28,7 @@ function cleanIP(ip: string) {
 }
 
 function Main() {
-  process.title = `Asphyxia CORE ${VERSION}`;
+  process.title = `${CONFIG.server_name || 'Asphyxia Core'} ${VERSION}`;
 
   Logger.info('                        _                _        ');
   Logger.info('        /\\             | |              (_)      ');
@@ -40,7 +40,7 @@ function Main() {
   Logger.info('                 |_|          |___/     /  ` /  \\ |__) |__  ');
   Logger.info('                                        \\__, \\__/ |  \\ |___ ');
   Logger.info('');
-  Logger.info(chalk.cyanBright(pad(`CORE ${VERSION}`, 60)));
+  Logger.info(chalk.cyanBright(pad(`${CONFIG.server_tag || 'CORE'} ${VERSION}`, 60)));
   Logger.info(pad(`Brought you by Team Asphyxia | Modified by Beafowl`, 60));
   Logger.info(` `);
   Logger.info(chalk.redBright(pad(`FREE SOFTWARE. BEWARE OF SCAMMERS.`, 60)));
@@ -61,7 +61,9 @@ function Main() {
   const external = LoadExternalPlugins();
   SaveConfig();
 
-  process.title = `Asphyxia CORE ${VERSION} | Plugins: ${external.length}`;
+  process.title = `${CONFIG.server_name || 'Asphyxia Core'} ${VERSION} | Plugins: ${
+    external.length
+  }`;
   if (external.length <= 0) {
     Logger.warn(chalk.yellowBright('no plugins are installed.'));
     Logger.info('');

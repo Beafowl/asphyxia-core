@@ -7,18 +7,19 @@ export const facility = new EamuseRouteContainer();
 
 facility.add('facility.get', async (info, data, send) => {
   const port = CONFIG.matching_port;
+  const tag = CONFIG.server_tag || 'CORE';
 
   const result = {
     location: {
       id: kitem('str', 'ea'),
       country: kitem('str', 'JP'),
       region: kitem('str', '1'),
-      name: kitem('str', 'CORE'),
+      name: kitem('str', tag),
       type: kitem('u8', 0),
       countryname: kitem('str', 'UNKNOWN'),
       countryjname: kitem('str', '不明'),
-      regionname: kitem('str', 'CORE'),
-      regionjname: kitem('str', 'CORE'),
+      regionname: kitem('str', tag),
+      regionjname: kitem('str', tag),
       customercode: kitem('str', 'AXUSR'),
       companycode: kitem('str', 'AXCPY'),
       latitude: kitem('s32', 6666),
@@ -47,11 +48,11 @@ facility.add('facility.get', async (info, data, send) => {
         supplylimit: kitem('s32', 100000),
       },
       url: {
-        eapass: kitem('str', `CORE ${VERSION}`),
-        arcadefan: kitem('str', `CORE ${VERSION}`),
-        konaminetdx: kitem('str', `CORE ${VERSION}`),
-        konamiid: kitem('str', `CORE ${VERSION}`),
-        eagate: kitem('str', `CORE ${VERSION}`),
+        eapass: kitem('str', `${tag} ${VERSION}`),
+        arcadefan: kitem('str', `${tag} ${VERSION}`),
+        konaminetdx: kitem('str', `${tag} ${VERSION}`),
+        konamiid: kitem('str', `${tag} ${VERSION}`),
+        eagate: kitem('str', `${tag} ${VERSION}`),
       },
     },
   };
