@@ -2,7 +2,7 @@
 
 A fork of [asphyxia-core](https://github.com/asphyxia-core/core) with additional features.
 
-This repository also includes a modified version of the [SDVX plugin](https://github.com/22vv0/asphyxia_plugins) by 22vv0 (itself a fork of the [official Asphyxia plugins](https://github.com/asphyxia-core/plugins)). The plugin lives in `plugins/sdvx@asphyxia` and has been modified alongside the core — the changes listed under "SDVX Plugin" below are specific to this fork.
+Some of the core changes were made specifically to support a forked SDVX plugin. The plugin is maintained in a separate repository: [Beafowl/asphyxia_plugins (kfc branch)](https://github.com/Beafowl/asphyxia_plugins/tree/kfc), which is itself a fork of [22vv0's plugin](https://github.com/22vv0/asphyxia_plugins).
 
 ## Credits
 
@@ -58,17 +58,12 @@ Log in to the WebUI and change the admin password immediately. If your server is
 - Access control (profile ownership, admin-only pages)
 - Server name and client tag configurable via `config.ini`
 
-### SDVX Plugin - Tachi Integration
-- OAuth flow for [Kamaitachi](https://kamai.tachi.ac) score sync
-- Bidirectional score import/export with Tachi API
-- Automatic score export to Tachi on each play (opt-in toggle)
-- Best 50 PB comparison (Asphyxia vs Tachi)
-- Arcade-size controller warning on Tachi tab
-
-### SDVX Plugin - Score Management
-- Database migration tool to import scores from another Asphyxia server
-- Nabla volforce recalculation tool
-- Version-aware clear ranking (EG v6 / Nabla v7 MXV ordering)
+### Core changes for the SDVX plugin
+These are server-side changes in this repository that support the [forked SDVX plugin](https://github.com/Beafowl/asphyxia_plugins/tree/kfc).
+- Tachi OAuth client ID and secret configurable via `config.ini`
+- Nabla volforce recalculation endpoint
+- Tachi export timestamp tracking and v7 score export support
+- Clear comparison fix for proper Exceed Gear ranking order (MXV < UC < PUC)
 
 ### WebUI
 - Removed shutdown/process controls from navbar
