@@ -99,7 +99,8 @@ html.has-aside-left.has-aside-mobile-transition.has-navbar-fixed-top.has-aside-e
           ul.menu-list
             +li_menu_item("desktop-mac", "Dashboard", "/")
             +li_menu_item("account-circle", "Profiles", "/profiles")
-            +li_menu_item("database", "Data Management", "/data")
+            if admin
+              +li_menu_item("database", "Data Management", "/data")
             +li_menu_item("account-cog", "Account", "/account")
             if admin
               +li_menu_item("account-group", "Users", "/users")

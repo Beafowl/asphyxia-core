@@ -76,6 +76,29 @@
     axios.get('/fun/open-plugins');
   });
 
+  $('#backup-savedata').on('click', function () {
+    const btn = $(this);
+    btn.addClass('is-loading').prop('disabled', true);
+    axios
+      .get('/fun/backup-savedata')
+      .then(response => {
+        btn.removeClass('is-loading is-primary').addClass('is-success');
+        btn.find('span:last').text('Backup Complete');
+        setTimeout(() => {
+          btn.removeClass('is-success').addClass('is-primary').prop('disabled', false);
+          btn.find('span:last').text('Backup Savedata');
+        }, 3000);
+      })
+      .catch(() => {
+        btn.removeClass('is-loading is-primary').addClass('is-danger');
+        btn.find('span:last').text('Backup Failed');
+        setTimeout(() => {
+          btn.removeClass('is-danger').addClass('is-primary').prop('disabled', false);
+          btn.find('span:last').text('Backup Savedata');
+        }, 3000);
+      });
+  });
+
   $('[jdenticon]').each(function (i, obj) {
     var str = $(this).attr('jdenticon');
     var size = $(this).attr('jdenticon-size');

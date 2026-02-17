@@ -1,3 +1,28 @@
+## Fork
+
+### Core - Authentication & Access Control
+- **CORE**: Added user authentication system (signup, login, account management)
+- **CORE**: Added admin role with user management capabilities
+- **CORE**: Added access control for profile ownership and admin-only pages
+- **CORE**: Restricted Data Management page to admin users only
+- **WebUI**: Hidden data delete buttons for non-admin users
+- **WebUI**: Removed Process dropdown and Shutdown button from navbar
+- **WebUI**: Added card number help page for signup
+
+### Core - Configuration
+- **CORE**: Server name and client tag are now configurable via `config.ini`
+- **CORE**: Fixed config loading order to prevent null error on startup
+
+### Core - Backup
+- **CORE**: Added savedata backup button to the server dashboard (admin only)
+
+### Core - SDVX Plugin Support
+- **CORE**: Added Tachi OAuth client ID and secret to `config.ini` (for SDVX plugin Tachi integration)
+- **CORE**: Added Nabla volforce recalculation endpoint
+- **CORE**: Added Tachi export timestamp tracking and v7 score export support
+- **CORE**: Fixed clear comparison to use proper Exceed Gear ranking order (MXV < UC < PUC)
+- **CORE**: Hidden admin-only plugin pages, restricted Tachi tab to profile owner, added Tachi token validation
+
 ## v1.60a
 - **CORE**: Core is now open-source.
 - **CORE**: Removed 16 profile count limit.

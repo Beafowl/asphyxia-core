@@ -67,4 +67,16 @@ block content
           .card-content !{changelog}
       if admin
         .column
+          .card.mb-4
+            header.card-header
+              p.card-header-title
+                span.icon
+                  i.mdi.mdi-content-save
+                | Backup
+            .card-content
+              p.mb-3 Create a backup of the savedata folder.
+              button.button.is-primary#backup-savedata
+                span.icon
+                  i.mdi.mdi-database-export
+                span Backup Savedata
           +form('CORE Settings', config, 'core')

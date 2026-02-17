@@ -29,7 +29,7 @@ const EXEC_PATH = path.resolve(pkg ? path.dirname(process.argv0) : process.cwd()
 export const PLUGIN_PATH = path.join(EXEC_PATH, 'plugins');
 export const ASSETS_PATH = path.join(pkg ? __dirname : `../build-env`, 'assets');
 
-const SAVE_PATH = path.resolve(EXEC_PATH, ARGS.savedata);
+export const SAVE_PATH = path.resolve(EXEC_PATH, ARGS.savedata);
 const COREDB_FILE = path.join(SAVE_PATH, 'core.db');
 
 const LoadDatabase = async (file: string) => {
@@ -649,6 +649,48 @@ export async function GetTachiExportTimestamp(refid: string): Promise<number | n
   try {
     const doc = await CoreDB.findOneAsync<any>({ __s: 'tachi_export_ts', refid });
     return doc ? doc.timestamp : null;
+  } catch (err) {
+    Logger.error(err);
+    return null;
+  }
+}
+
+export async function SaveTachiAutoExport(refid: string, enabled: boolean) {
+  try {
+    await CoreDB.updateAsync(
+      { __s: 'tachi_auto_export', refid },
+      { __s: 'tachi_auto_export', refid, enabled },
+      { upsert: true }
+    );
+    return true;
+  } catch (err) {
+    Logger.error(err);
+    return false;
+  }
+}
+
+export async function GetTachiAutoExport(refid: string): Promise<boolean> {
+  try {
+    const doc = await CoreDB.findOneAsync<any>({ __s: 'tachi_auto_export', refid });
+    return doc ? doc.enabled : false;
+  } catch (err) {
+    Logger.error(err);
+    return false;
+  }
+}
+
+export async function GetTachiTokenByRefid(refid: string): Promise<string | null> {
+  try {
+    const cards = await FindCardsByRefid(refid);
+    if (!cards || !Array.isArray(cards) || cards.length === 0) return null;
+    for (const card of cards) {
+      const user = await FindUserByCardNumber(card.cid);
+      if (user) {
+        const token = await GetTachiToken(user.username);
+        if (token) return token;
+      }
+    }
+    return null;
   } catch (err) {
     Logger.error(err);
     return null;

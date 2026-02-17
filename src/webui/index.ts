@@ -51,6 +51,8 @@ import {
   DeleteTachiToken,
   SaveTachiExportTimestamp,
   GetTachiExportTimestamp,
+  SaveTachiAutoExport,
+  GetTachiAutoExport,
 } from '../utils/EamuseIO';
 import { urlencoded, json } from 'body-parser';
 import path from 'path';
@@ -426,6 +428,16 @@ webui.get(
 webui.post(
   '/tachi/disconnect',
   wrap(async (req, res) => {
+    // Clean up auto-export entries for this user's profiles
+    const cardNumber = req.session.user!.cardNumber;
+    if (cardNumber) {
+      const card = await FindCard(cardNumber);
+      if (card && card.__refid) {
+        await SaveTachiAutoExport(card.__refid, false);
+        const sdvxPlugin = { identifier: 'sdvx@asphyxia', core: false };
+        await APIRemove(sdvxPlugin, { collection: 'tachi_auto_export', refid: card.__refid });
+      }
+    }
     await DeleteTachiToken(req.session.user!.username);
     res.json({ success: true });
   })
@@ -458,6 +470,55 @@ webui.post(
     if (!isAdmin && !isOwner) return res.sendStatus(403);
 
     await SaveTachiExportTimestamp(refid, Date.now());
+    res.json({ success: true });
+  })
+);
+
+webui.get(
+  '/tachi/auto-export',
+  wrap(async (req, res) => {
+    const refid = req.query.refid as string;
+    if (!refid) return res.status(400).json({ success: false, description: 'Missing refid' });
+
+    const isAdmin = req.session.user!.admin;
+    const isOwner = await userOwnsProfile(req, refid);
+    if (!isAdmin && !isOwner) return res.sendStatus(403);
+
+    const enabled = await GetTachiAutoExport(refid);
+    res.json({ success: true, enabled });
+  })
+);
+
+webui.post(
+  '/tachi/auto-export',
+  json({ limit: '1mb' }),
+  wrap(async (req, res) => {
+    const { refid, enabled } = req.body;
+    if (!refid || typeof enabled !== 'boolean')
+      return res.status(400).json({ success: false, description: 'Missing refid or enabled' });
+
+    const isAdmin = req.session.user!.admin;
+    const isOwner = await userOwnsProfile(req, refid);
+    if (!isAdmin && !isOwner) return res.sendStatus(403);
+
+    await SaveTachiAutoExport(refid, enabled);
+
+    // Store/clear a copy of the Tachi token in the plugin DB so the saveScore
+    // handler can access it without needing CoreDB
+    const sdvxPlugin = { identifier: 'sdvx@asphyxia', core: false };
+    if (enabled) {
+      const token = await GetTachiToken(req.session.user!.username);
+      if (token) {
+        await APIUpsert(
+          sdvxPlugin,
+          { collection: 'tachi_auto_export', refid },
+          { collection: 'tachi_auto_export', refid, token }
+        );
+      }
+    } else {
+      await APIRemove(sdvxPlugin, { collection: 'tachi_auto_export', refid });
+    }
+
     res.json({ success: true });
   })
 );
@@ -868,6 +929,101 @@ webui.post(
   })
 );
 
+// Score migration from another Asphyxia server
+webui.post(
+  '/migrate/import-scores',
+  json({ limit: '50mb' }),
+  wrap(async (req, res) => {
+    const { refid, scores } = req.body;
+    if (!refid || !scores || !Array.isArray(scores)) {
+      return res.status(400).json({ success: false, description: 'Missing refid or scores' });
+    }
+
+    const isAdmin = req.session.user!.admin;
+    const isOwner = await userOwnsProfile(req, refid);
+    if (!isAdmin && !isOwner) return res.sendStatus(403);
+
+    const plugin = { identifier: 'sdvx@asphyxia', core: false };
+    let saved = 0;
+    let skipped = 0;
+
+    const EG_CLEAR_RANK: Record<number, number> = { 0: 0, 1: 1, 2: 2, 3: 3, 6: 4, 4: 5, 5: 6 };
+    const NABLA_CLEAR_RANK: Record<number, number> = { 0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6 };
+    function clearRank(c: number, version?: number) {
+      const map = version === 7 ? NABLA_CLEAR_RANK : EG_CLEAR_RANK;
+      return map[c] ?? 0;
+    }
+
+    for (const score of scores) {
+      try {
+        const existing = await APIFind(plugin, refid, {
+          collection: 'music',
+          mid: score.mid,
+          type: score.type,
+          version: score.version || 6,
+        });
+
+        if (existing && existing.length > 0) {
+          const ex = existing[0];
+          const update: any = {};
+          if (score.score > ex.score) {
+            update.score = score.score;
+            update.buttonRate = score.buttonRate || 0;
+            update.longRate = score.longRate || 0;
+            update.volRate = score.volRate || 0;
+          }
+          if (clearRank(score.clear, score.version) > clearRank(ex.clear, ex.version))
+            update.clear = score.clear;
+          if (score.grade && (!ex.grade || score.grade > ex.grade)) update.grade = score.grade;
+          if (score.exscore && (!ex.exscore || score.exscore > ex.exscore))
+            update.exscore = score.exscore;
+          if (score.volforce && (!ex.volforce || score.volforce > ex.volforce))
+            update.volforce = score.volforce;
+
+          if (Object.keys(update).length > 0) {
+            await APIUpdate(
+              plugin,
+              refid,
+              {
+                collection: 'music',
+                mid: score.mid,
+                type: score.type,
+                version: score.version || 6,
+              },
+              { $set: update }
+            );
+            saved++;
+          } else {
+            skipped++;
+          }
+          continue;
+        }
+
+        await APIInsert(plugin, refid, {
+          collection: 'music',
+          mid: score.mid,
+          type: score.type,
+          score: score.score || 0,
+          clear: score.clear || 0,
+          exscore: score.exscore || 0,
+          grade: score.grade || 0,
+          buttonRate: score.buttonRate || 0,
+          longRate: score.longRate || 0,
+          volRate: score.volRate || 0,
+          volforce: score.volforce || 0,
+          version: score.version || 6,
+          dbver: 1,
+        });
+        saved++;
+      } catch (err) {
+        Logger.error(`Failed to migrate score mid=${score.mid} type=${score.type}: ${err}`);
+      }
+    }
+
+    res.json({ success: true, saved, skipped });
+  })
+);
+
 webui.use('/fun', fun);
 webui.use('/', emit);
 
@@ -1137,6 +1293,9 @@ webui.post(
 webui.get(
   '/data',
   wrap(async (req, res) => {
+    if (!req.session.user?.admin) {
+      return res.redirect('/');
+    }
     const pluginStats = await PluginStats();
     const installed = ROOT_CONTAINER.Plugins.map(p => p.Identifier);
     res.render(
@@ -1409,7 +1568,7 @@ webui.get(
     const isAdmin = req.session.user!.admin;
     const isOwner = await userOwnsProfile(req, refid.toString());
 
-    const ownerOnlyPages = ['profile_tachi', 'profile_nabla'];
+    const ownerOnlyPages = ['profile_tachi', 'profile_nabla', 'profile_migrate'];
     if (ownerOnlyPages.includes(page) && !isAdmin && !isOwner) {
       return res.redirect(`/plugin/${req.params['plugin']}/profile?refid=${refid}`);
     }
