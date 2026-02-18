@@ -63,6 +63,8 @@ import { groupBy, startCase, lowerCase, upperFirst } from 'lodash';
 import { sizeof } from 'sizeof';
 import { ajax as emit } from './emit';
 import { Logger } from '../utils/Logger';
+import archiver from 'archiver';
+const { serialize: nedbSerialize } = require('@seald-io/nedb/lib/model.js');
 
 const memorystore = createMemoryStore(session);
 
@@ -1207,6 +1209,69 @@ webui.post(
     }
 
     res.json({ success: true, saved, skipped });
+  })
+);
+
+// Export savedata for migration to another Asphyxia server
+webui.get(
+  '/migrate/export-savedata',
+  wrap(async (req, res) => {
+    const refid = req.query.refid as string;
+    if (!refid) {
+      return res.status(400).json({ success: false, description: 'Missing refid' });
+    }
+
+    const isAdmin = req.session.user!.admin;
+    const isOwner = await userOwnsProfile(req, refid);
+    if (!isAdmin && !isOwner) return res.sendStatus(403);
+
+    // Gather core.db documents (profile + cards)
+    const profile = await FindProfile(refid);
+    if (!profile) {
+      return res.status(404).json({ success: false, description: 'Profile not found' });
+    }
+    const cards = await FindCardsByRefid(refid);
+
+    // Gather sdvx@asphyxia.db documents (all plugin data for this refid)
+    // core: true preserves __s, __refid, _id, createdAt, updatedAt fields
+    const sdvxPlugin = { identifier: 'sdvx@asphyxia', core: true };
+    const pluginDocs = await APIFind(sdvxPlugin, refid, {});
+
+    // Format as NeDB (one JSON per line, using NeDB's serialize for correct Date handling)
+    const coreLines: string[] = [];
+    coreLines.push(nedbSerialize(profile));
+    if (cards && Array.isArray(cards)) {
+      for (const card of cards) {
+        coreLines.push(nedbSerialize(card));
+      }
+    }
+    const coreContent = coreLines.join('\n') + '\n';
+
+    const sdvxLines: string[] = [];
+    if (pluginDocs && Array.isArray(pluginDocs)) {
+      for (const doc of pluginDocs) {
+        sdvxLines.push(nedbSerialize(doc));
+      }
+    }
+    const sdvxContent = sdvxLines.join('\n') + '\n';
+
+    // Create zip with maximum compression
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    archive.on('error', (err: Error) => {
+      Logger.error(`Export zip generation failed: ${err}`);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, description: 'Zip generation failed' });
+      }
+    });
+
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', 'attachment; filename="savedata.zip"');
+
+    archive.pipe(res);
+    archive.append(coreContent, { name: 'savedata/core.db' });
+    archive.append(sdvxContent, { name: 'savedata/sdvx@asphyxia.db' });
+    await archive.finalize();
   })
 );
 
