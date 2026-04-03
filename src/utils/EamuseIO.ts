@@ -697,6 +697,41 @@ export async function GetTachiTokenByRefid(refid: string): Promise<string | null
   }
 }
 
+export async function SaveFlowerToken(username: string, token: string) {
+  try {
+    const existing = await CoreDB.findOneAsync<any>({ __s: 'flower_token', username });
+    if (existing) {
+      await CoreDB.updateAsync({ __s: 'flower_token', username }, { $set: { token } });
+    } else {
+      await CoreDB.insertAsync({ __s: 'flower_token', username, token });
+    }
+    return true;
+  } catch (err) {
+    Logger.error(err);
+    return false;
+  }
+}
+
+export async function GetFlowerToken(username: string): Promise<string | null> {
+  try {
+    const doc = await CoreDB.findOneAsync<any>({ __s: 'flower_token', username });
+    return doc ? doc.token : null;
+  } catch (err) {
+    Logger.error(err);
+    return null;
+  }
+}
+
+export async function DeleteFlowerToken(username: string) {
+  try {
+    await CoreDB.removeAsync({ __s: 'flower_token', username }, {});
+    return true;
+  } catch (err) {
+    Logger.error(err);
+    return false;
+  }
+}
+
 export async function GetProfiles() {
   try {
     return (await CoreDB.findAsync<any>({

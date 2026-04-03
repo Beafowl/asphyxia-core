@@ -53,6 +53,9 @@ import {
   GetTachiExportTimestamp,
   SaveTachiAutoExport,
   GetTachiAutoExport,
+  SaveFlowerToken,
+  GetFlowerToken,
+  DeleteFlowerToken,
 } from '../utils/EamuseIO';
 import { urlencoded, json } from 'body-parser';
 import path from 'path';
@@ -246,6 +249,23 @@ webui.get('/tachi/callback', (req, res) => {
   res.send(`<html><body><script>
     if (window.opener) {
       window.opener.postMessage({ type: 'tachi-auth', code: '${code}' }, '*');
+    }
+    window.close();
+  </script><p>Authorization complete. You can close this window.</p></body></html>`);
+});
+
+// Project Flower config endpoint (before auth middleware)
+webui.get('/flower/config', (_req, res) => {
+  res.json({ clientId: CONFIG.flower_client_id || '' });
+});
+
+// Project Flower OAuth callback (before auth middleware - opened in popup without session)
+webui.get('/flower/callback', (req, res) => {
+  const code = req.query.code as string;
+  if (!code) return res.status(400).send('Missing authorization code');
+  res.send(`<html><body><script>
+    if (window.opener) {
+      window.opener.postMessage({ type: 'flower-auth', code: '${code}' }, '*');
     }
     window.close();
   </script><p>Authorization complete. You can close this window.</p></body></html>`);
@@ -900,6 +920,386 @@ webui.get(
     }
 
     res.json({ success: true, scores });
+  })
+);
+
+// Project Flower API endpoints
+const FLOWER_BASE_URL = 'https://kailua.projectflower.eu';
+
+function flowerApiRequest(
+  method: string,
+  urlPath: string,
+  token: string,
+  postData?: string
+): Promise<any> {
+  const https = require('https');
+  const url = urlPath.startsWith('http') ? urlPath : `${FLOWER_BASE_URL}${urlPath}`;
+  return new Promise((resolve, reject) => {
+    const options: any = {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+    };
+    if (postData) {
+      options.headers['Content-Type'] = 'application/json';
+      options.headers['Content-Length'] = Buffer.byteLength(postData);
+    }
+    const req = https.request(url, options, (r: any) => {
+      let body = '';
+      r.on('data', (c: string) => (body += c));
+      r.on('end', () => {
+        try {
+          resolve({ status: r.statusCode, data: JSON.parse(body) });
+        } catch {
+          resolve({ status: r.statusCode, data: null, raw: body });
+        }
+      });
+    });
+    req.on('error', reject);
+    if (postData) req.write(postData);
+    req.end();
+  });
+}
+
+webui.post(
+  '/flower/exchange',
+  json({ limit: '1mb' }),
+  wrap(async (req, res) => {
+    const code = req.body.code;
+    if (!code) return res.status(400).json({ success: false, description: 'Missing code' });
+
+    const https = require('https');
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const redirectUri = `${protocol}://${host}/flower/callback`;
+    const postData = `client_id=${encodeURIComponent(CONFIG.flower_client_id)}&client_secret=${encodeURIComponent(CONFIG.flower_client_secret)}&grant_type=authorization_code&redirect_uri=${encodeURIComponent(redirectUri)}&code=${encodeURIComponent(code)}`;
+
+    const tokenResult: any = await new Promise((resolve, reject) => {
+      const tokenReq = https.request(
+        `${FLOWER_BASE_URL}/oauth/token`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Length': Buffer.byteLength(postData),
+          },
+        },
+        (tokenRes: any) => {
+          let body = '';
+          tokenRes.on('data', (chunk: string) => (body += chunk));
+          tokenRes.on('end', () => {
+            try {
+              resolve(JSON.parse(body));
+            } catch {
+              reject(new Error('Failed to parse Project Flower response'));
+            }
+          });
+        }
+      );
+      tokenReq.on('error', reject);
+      tokenReq.write(postData);
+      tokenReq.end();
+    });
+
+    if (!tokenResult.access_token) {
+      return res.json({
+        success: false,
+        description: tokenResult.error_description || tokenResult.error || 'Token exchange failed',
+      });
+    }
+
+    await SaveFlowerToken(req.session.user!.username, tokenResult.access_token);
+    res.json({ success: true });
+  })
+);
+
+webui.get(
+  '/flower/status',
+  wrap(async (req, res) => {
+    const token = await GetFlowerToken(req.session.user!.username);
+    if (!token) return res.json({ authorized: false });
+
+    try {
+      const result = await flowerApiRequest('GET', '/api/account/v1/my_player', token);
+      if (result.status === 200 && result.data) {
+        return res.json({ authorized: true });
+      }
+    } catch {}
+
+    await DeleteFlowerToken(req.session.user!.username);
+    return res.json({ authorized: false });
+  })
+);
+
+webui.post(
+  '/flower/disconnect',
+  wrap(async (req, res) => {
+    await DeleteFlowerToken(req.session.user!.username);
+    res.json({ success: true });
+  })
+);
+
+// Fetch player bests from Project Flower SDVX API and return raw + normalized data
+webui.get(
+  '/flower/scores',
+  wrap(async (req, res) => {
+    const token = await GetFlowerToken(req.session.user!.username);
+    if (!token) return res.json({ success: false, description: 'Not authorized with Project Flower' });
+
+    try {
+      // Fetch player bests - may be paginated via HAL _links.next
+      let allBests: any[] = [];
+      let nextUrl: string | null = '/api/sdvx/v1/player_bests';
+
+      while (nextUrl) {
+        const result = await flowerApiRequest('GET', nextUrl, token);
+        if (result.status !== 200 || !result.data) {
+          return res.json({
+            success: false,
+            description: 'Failed to fetch player bests (status ' + result.status + ')',
+            debug: result.data,
+          });
+        }
+
+        const data = result.data;
+
+        // Try to extract the score array from whatever structure Flower returns
+        let found = false;
+        if (Array.isArray(data)) {
+          allBests = allBests.concat(data);
+          found = true;
+        } else if (data && typeof data === 'object') {
+          // Check _embedded (HAL standard)
+          if (data._embedded) {
+            const keys = Object.keys(data._embedded);
+            for (const key of keys) {
+              if (Array.isArray(data._embedded[key])) {
+                allBests = allBests.concat(data._embedded[key]);
+                found = true;
+              }
+            }
+          }
+          // Check common wrapper keys
+          if (!found) {
+            for (const key of ['_items', 'items', 'scores', 'data', 'results', 'records', 'bests', 'player_bests']) {
+              if (Array.isArray(data[key])) {
+                allBests = allBests.concat(data[key]);
+                found = true;
+                break;
+              }
+            }
+          }
+          // If still nothing found, return the raw structure for debugging
+          if (!found) {
+            return res.json({
+              success: true,
+              total: 0,
+              scores: [],
+              _raw: data,
+              _keys: Object.keys(data),
+              _debug: 'Could not find score array in response. Check _raw for the actual structure.',
+            });
+          }
+        }
+
+        // Follow pagination
+        nextUrl = data?._links?._next || data?._links?.next?.href || null;
+      }
+
+      res.json({
+        success: true,
+        total: allBests.length,
+        scores: allBests,
+        // Include first few raw entries for debugging
+        _sample: allBests.slice(0, 3),
+      });
+    } catch (err: any) {
+      res.json({ success: false, description: err.message || 'Failed to fetch scores' });
+    }
+  })
+);
+
+// Save imported Project Flower scores with volforce computation
+webui.post(
+  '/flower/save-scores',
+  json({ limit: '50mb' }),
+  wrap(async (req, res) => {
+    const { refid, scores } = req.body;
+    if (!refid || !scores || !Array.isArray(scores)) {
+      return res.status(400).json({ success: false, description: 'Missing refid or scores' });
+    }
+
+    const isAdmin = req.session.user!.admin;
+    const isOwner = await userOwnsProfile(req, refid);
+    if (!isAdmin && !isOwner) return res.sendStatus(403);
+
+    const plugin = { identifier: 'sdvx@asphyxia', core: false };
+    let saved = 0;
+    let skipped = 0;
+
+    // Load music_db for difficulty levels (needed for volforce computation)
+    const musicDbPath = path.join(
+      PLUGIN_PATH, 'sdvx@asphyxia', 'webui', 'asset', 'json', 'music_db.json'
+    );
+    let mdb: any = null;
+    if (existsSync(musicDbPath)) {
+      mdb = JSON.parse(readFileSync(musicDbPath, 'utf8'));
+      // Merge custom songs if file exists
+      const customDbPath = path.join(
+        PLUGIN_PATH, 'sdvx@asphyxia', 'webui', 'asset', 'json', 'custom_music_db.json'
+      );
+      if (existsSync(customDbPath)) {
+        try {
+          const customDb = JSON.parse(readFileSync(customDbPath, 'utf8'));
+          if (customDb?.mdb?.music?.length) {
+            mdb.mdb.music = mdb.mdb.music.concat(customDb.mdb.music);
+          }
+        } catch {}
+      }
+    }
+
+    const diffName = ['novice', 'advanced', 'exhaust', 'infinite', 'maximum', 'ultimate'];
+    function getDiffLevel(mid: number, type: number): number {
+      if (!mdb) return 0;
+      const song = mdb.mdb.music.find((m: any) => m.id == mid);
+      if (!song) return 0;
+      const name = diffName[type];
+      if (!name) return 0;
+      return parseFloat(song.difficulty?.[name]) || 0;
+    }
+
+    // Volforce computation (Nabla v7 formula)
+    const medalCoef = [0, 0.5, 1.0, 1.02, 1.04, 1.06, 1.1];
+    const gradeCoef = [0, 0.8, 0.82, 0.85, 0.88, 0.91, 0.94, 0.97, 1.0, 1.02, 1.05];
+    function computeForce(diff: number, score: number, medal: number, grade: number) {
+      return Math.floor(diff * (score / 10000000) * (gradeCoef[grade] || 0.8) * (medalCoef[medal] || 0.5) * 20);
+    }
+
+    // Compute grade from score (Flower doesn't provide grade)
+    function gradeFromScore(score: number): number {
+      if (score >= 9900000) return 10; // S
+      if (score >= 9800000) return 9;  // AAA+
+      if (score >= 9700000) return 8;  // AAA
+      if (score >= 9500000) return 7;  // AA+
+      if (score >= 9300000) return 6;  // AA
+      if (score >= 9000000) return 5;  // A+
+      if (score >= 8700000) return 4;  // A
+      if (score >= 7500000) return 3;  // B
+      if (score >= 6500000) return 2;  // C
+      return 1; // D
+    }
+
+    // Detect if user has a v7 (Nabla) profile to determine target version
+    const v7Profile = await APIFindOne(plugin, refid, { collection: 'profile', version: 7 });
+    const targetVersion = v7Profile ? 7 : 6;
+
+    // Ensure mid is always stored as a number (CSV import may send strings)
+    for (const score of scores) {
+      if (typeof score.mid === 'string') score.mid = parseInt(score.mid) || score.mid;
+    }
+
+    // v6→v7 clear type remapping (UC/PUC/MXV positions differ between versions)
+    // EG (v6): 0=none, 1=played, 2=clear, 3=excessive, 4=uc, 5=puc, 6=mxv
+    // Nabla (v7): 0=none, 1=played, 2=clear, 3=excessive, 4=mxv, 5=uc, 6=puc
+    const nblClearLamp = [0, 1, 2, 3, 5, 6, 4];
+
+    if (targetVersion === 7) {
+      for (const score of scores) {
+        if (!score.version || score.version === 6) {
+          score.clear = nblClearLamp[score.clear] ?? score.clear;
+          score.version = 7;
+        }
+      }
+    }
+
+    const NABLA_CLEAR_RANK: Record<number, number> = { 0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6 };
+    function clearRank(c: number) {
+      return NABLA_CLEAR_RANK[c] ?? 0;
+    }
+
+    for (const score of scores) {
+      try {
+        // Compute grade from score if not provided
+        const grade = score.grade || gradeFromScore(score.score);
+
+        // Compute volforce for v7
+        let volforce = 0;
+        if (targetVersion === 7) {
+          const diffLevel = getDiffLevel(score.mid, score.type);
+          if (diffLevel > 0) {
+            volforce = computeForce(diffLevel, score.score, score.clear, grade);
+          }
+        }
+
+        const existing = await APIFind(plugin, refid, {
+          collection: 'music',
+          mid: score.mid,
+          type: score.type,
+          version: targetVersion,
+        });
+
+        if (existing && existing.length > 0) {
+          const ex = existing[0];
+          if (
+            score.score > ex.score ||
+            clearRank(score.clear) > clearRank(ex.clear) ||
+            (!ex.grade && grade)
+          ) {
+            const update: any = {};
+            if (score.score > ex.score) update.score = score.score;
+            if (clearRank(score.clear) > clearRank(ex.clear)) update.clear = score.clear;
+            if (grade && (!ex.grade || grade > ex.grade)) update.grade = grade;
+            if (score.exscore && (!ex.exscore || score.exscore > ex.exscore))
+              update.exscore = score.exscore;
+            if (volforce && (!ex.volforce || volforce > ex.volforce))
+              update.volforce = volforce;
+
+            if (Object.keys(update).length > 0) {
+              await APIUpdate(
+                plugin,
+                refid,
+                { collection: 'music', mid: score.mid, type: score.type, version: targetVersion },
+                { $set: update }
+              );
+              saved++;
+            } else {
+              skipped++;
+            }
+          } else {
+            skipped++;
+          }
+          continue;
+        }
+
+        const doc: any = {
+          collection: 'music',
+          mid: score.mid,
+          type: score.type,
+          score: score.score,
+          clear: score.clear,
+          exscore: score.exscore || 0,
+          grade: grade,
+          buttonRate: 0,
+          longRate: 0,
+          volRate: 0,
+          volforce: volforce,
+          version: targetVersion,
+          dbver: 1,
+        };
+        if (score.timeAchieved) {
+          doc.createdAt = new Date(score.timeAchieved);
+          doc.updatedAt = new Date(score.timeAchieved);
+        }
+        await APIInsert(plugin, refid, doc);
+        saved++;
+      } catch (err) {
+        Logger.error(`Failed to save Flower score mid=${score.mid} type=${score.type}: ${err}`);
+      }
+    }
+
+    res.json({ success: true, saved, skipped });
   })
 );
 
@@ -1913,7 +2313,7 @@ webui.get(
     const isAdmin = req.session.user!.admin;
     const isOwner = await userOwnsProfile(req, refid.toString());
 
-    const ownerOnlyPages = ['profile_tachi', 'profile_nabla', 'profile_migrate'];
+    const ownerOnlyPages = ['profile_import', 'profile_export', 'profile_nabla'];
     if (ownerOnlyPages.includes(page) && !isAdmin && !isOwner) {
       return res.redirect(`/plugin/${req.params['plugin']}/profile?refid=${refid}`);
     }

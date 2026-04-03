@@ -165,6 +165,20 @@ function CoreConfig() {
     default: '',
     desc: 'OAuth Client Secret for Kamaitachi integration',
   });
+
+  CONFIG_MAP['core'].set('flower_client_id', {
+    name: 'Project Flower Client ID',
+    type: 'string',
+    default: '',
+    desc: 'OAuth Client ID for Project Flower integration',
+  });
+
+  CONFIG_MAP['core'].set('flower_client_secret', {
+    name: 'Project Flower Client Secret',
+    type: 'string',
+    default: '',
+    desc: 'OAuth Client Secret for Project Flower integration',
+  });
 }
 CoreConfig();
 
