@@ -247,11 +247,17 @@ webui.get('/tachi/callback', (req, res) => {
   const code = req.query.code as string;
   if (!code) return res.status(400).send('Missing authorization code');
   res.send(`<html><body><script>
+    console.log('[Tachi Callback] window.opener:', !!window.opener);
     if (window.opener) {
       window.opener.postMessage({ type: 'tachi-auth', code: '${code}' }, '*');
+      window.close();
+    } else {
+      document.getElementById('msg').innerHTML =
+        '<strong>Authorization code received but could not communicate with the main window.</strong><br>' +
+        'This can happen if popups are restricted. Please close this window and try again, or ' +
+        'copy this code and use it manually: <code>${code}</code>';
     }
-    window.close();
-  </script><p>Authorization complete. You can close this window.</p></body></html>`);
+  </script><p id="msg">Authorization complete. You can close this window.</p></body></html>`);
 });
 
 // Project Flower config endpoint (before auth middleware)
@@ -648,6 +654,55 @@ webui.post(
     let saved = 0;
     let skipped = 0;
 
+    // Load music_db for difficulty levels (needed for volforce computation)
+    const musicDbPath = path.join(
+      PLUGIN_PATH, 'sdvx@asphyxia', 'webui', 'asset', 'json', 'music_db.json'
+    );
+    let mdb: any = null;
+    if (existsSync(musicDbPath)) {
+      mdb = JSON.parse(readFileSync(musicDbPath, 'utf8'));
+      const customDbPath = path.join(
+        PLUGIN_PATH, 'sdvx@asphyxia', 'webui', 'asset', 'json', 'custom_music_db.json'
+      );
+      if (existsSync(customDbPath)) {
+        try {
+          const customDb = JSON.parse(readFileSync(customDbPath, 'utf8'));
+          if (customDb?.mdb?.music?.length) {
+            mdb.mdb.music = mdb.mdb.music.concat(customDb.mdb.music);
+          }
+        } catch {}
+      }
+    }
+
+    const diffName = ['novice', 'advanced', 'exhaust', 'infinite', 'maximum', 'ultimate'];
+    function getDiffLevel(mid: number, type: number): number {
+      if (!mdb) return 0;
+      const song = mdb.mdb.music.find((m: any) => m.id == mid);
+      if (!song) return 0;
+      const name = diffName[type];
+      if (!name) return 0;
+      return parseFloat(song.difficulty?.[name]) || 0;
+    }
+
+    const medalCoef = [0, 0.5, 1.0, 1.02, 1.04, 1.06, 1.1];
+    const gradeCoef = [0, 0.8, 0.82, 0.85, 0.88, 0.91, 0.94, 0.97, 1.0, 1.02, 1.05];
+    function computeForce(diff: number, score: number, medal: number, grade: number) {
+      return Math.floor(diff * (score / 10000000) * (gradeCoef[grade] || 0.8) * (medalCoef[medal] || 0.5) * 20);
+    }
+
+    function gradeFromScore(score: number): number {
+      if (score >= 9900000) return 10;
+      if (score >= 9800000) return 9;
+      if (score >= 9700000) return 8;
+      if (score >= 9500000) return 7;
+      if (score >= 9300000) return 6;
+      if (score >= 9000000) return 5;
+      if (score >= 8700000) return 4;
+      if (score >= 7500000) return 3;
+      if (score >= 6500000) return 2;
+      return 1;
+    }
+
     // Detect if user has a v7 (Nabla) profile to determine target version
     const v7Profile = await APIFindOne(plugin, refid, { collection: 'profile', version: 7 });
     const targetVersion = v7Profile ? 7 : 6;
@@ -675,6 +730,16 @@ webui.post(
 
     for (const score of scores) {
       try {
+        const grade = score.grade || gradeFromScore(score.score);
+
+        let volforce = 0;
+        if (targetVersion === 7) {
+          const diffLevel = getDiffLevel(score.mid, score.type);
+          if (diffLevel > 0) {
+            volforce = computeForce(diffLevel, score.score, score.clear, grade);
+          }
+        }
+
         // Check if score already exists for this refid (filter by target version)
         const existing = await APIFind(plugin, refid, {
           collection: 'music',
@@ -689,15 +754,17 @@ webui.post(
           if (
             score.score > ex.score ||
             clearRank(score.clear) > clearRank(ex.clear) ||
-            (!ex.grade && score.grade)
+            (!ex.grade && grade)
           ) {
             const update: any = {};
             if (score.score > ex.score) update.score = score.score;
             if (clearRank(score.clear) > clearRank(ex.clear))
               update.clear = score.clear;
-            if (score.grade && (!ex.grade || score.grade > ex.grade)) update.grade = score.grade;
+            if (grade && (!ex.grade || grade > ex.grade)) update.grade = grade;
             if (score.exscore && (!ex.exscore || score.exscore > ex.exscore))
               update.exscore = score.exscore;
+            if (volforce && (!ex.volforce || volforce > ex.volforce))
+              update.volforce = volforce;
 
             if (Object.keys(update).length > 0) {
               await APIUpdate(
@@ -724,10 +791,11 @@ webui.post(
           score: score.score,
           clear: score.clear,
           exscore: score.exscore || 0,
-          grade: score.grade || 0,
+          grade: grade,
           buttonRate: 0,
           longRate: 0,
           volRate: 0,
+          volforce: volforce,
           version: targetVersion,
           dbver: 1,
         };
