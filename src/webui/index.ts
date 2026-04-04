@@ -722,6 +722,15 @@ webui.post(
       }
     }
 
+    // PUC (clear=6 in Nabla) requires a perfect 10,000,000 score;
+    // Tachi PBs compose best lamp and best score independently, so the lamp
+    // may be overstated — downgrade to MXV (clear=4) if score doesn't back it up
+    for (const score of scores) {
+      if (score.clear === 6 && score.score < 10000000) {
+        score.clear = 4;
+      }
+    }
+
     // Normalize clear values to a comparable ranking
     const NABLA_CLEAR_RANK: Record<number, number> = { 0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6 };
     function clearRank(c: number) {
@@ -1282,6 +1291,14 @@ webui.post(
       }
     }
 
+    // PUC (clear=6 in Nabla) requires a perfect 10,000,000 score;
+    // downgrade to MXV (clear=4) if score doesn't back it up
+    for (const score of scores) {
+      if (score.clear === 6 && score.score < 10000000) {
+        score.clear = 4;
+      }
+    }
+
     const NABLA_CLEAR_RANK: Record<number, number> = { 0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6 };
     function clearRank(c: number) {
       return NABLA_CLEAR_RANK[c] ?? 0;
@@ -1667,6 +1684,14 @@ webui.post(
     function clearRank(c: number, version?: number) {
       const map = version === 7 ? NABLA_CLEAR_RANK : EG_CLEAR_RANK;
       return map[c] ?? 0;
+    }
+
+    // PUC (clear=6 in Nabla) requires a perfect 10,000,000 score;
+    // downgrade to MXV (clear=4) if score doesn't back it up
+    for (const score of scores) {
+      if ((score.version || 6) === 7 && score.clear === 6 && score.score < 10000000) {
+        score.clear = 4;
+      }
     }
 
     for (const score of scores) {
