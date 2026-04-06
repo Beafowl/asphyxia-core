@@ -51,3 +51,236 @@ block content
                     span.icon.is-small
                       i.mdi.mdi-content-save
                     span Save
+
+        .card.mt-5
+          header.card-header
+            p.card-header-title
+              span.icon
+                i.mdi.mdi-key-variant
+              | API Token
+          .card-content
+            p.mb-3 Generate an API token to use with external tools like a Discord bot. One token per account.
+            #api-token-status
+              p.has-text-grey Loading...
+            #api-token-display.mt-3(style="display:none")
+              .notification.is-warning.is-light
+                p
+                  strong Copy this token now — it will not be shown again:
+                pre#api-token-value(style="word-break:break-all; user-select:all; cursor:pointer")
+            .buttons.mt-4
+              button#btn-generate-token.button.is-link
+                span.icon.is-small
+                  i.mdi.mdi-key-plus
+                span Generate Token
+              button#btn-revoke-token.button.is-danger(style="display:none")
+                span.icon.is-small
+                  i.mdi.mdi-key-remove
+                span Revoke Token
+
+        .card.mt-5
+          header.card-header
+            p.card-header-title
+              span.icon
+                i.mdi.mdi-application-cog-outline
+              | OAuth Applications
+          .card-content
+            p.mb-3 Register OAuth clients so external applications can access the API on behalf of users.
+            .field.is-horizontal
+              .field-label.is-normal
+                label.label App Name
+              .field-body
+                .field
+                  .control
+                    input#oauth-client-name.input(type="text" placeholder="My Application")
+            .field.is-horizontal
+              .field-label.is-normal
+                label.label Redirect URI
+              .field-body
+                .field
+                  .control
+                    input#oauth-client-redirect.input(type="url" placeholder="https://example.com/callback")
+            .buttons.is-right
+              button#btn-create-oauth-client.button.is-link
+                span.icon.is-small
+                  i.mdi.mdi-plus
+                span Create Client
+            #oauth-client-secret-display(style="display:none")
+              .notification.is-warning.is-light
+                p
+                  strong Copy the client secret now — it will not be shown again:
+                p.mt-2
+                  | Client ID:
+                  code#oauth-new-client-id
+                p
+                  | Client Secret:
+                  code#oauth-new-client-secret(style="word-break:break-all; user-select:all; cursor:pointer")
+            hr
+            p.has-text-weight-bold.mb-3 Your Registered Clients
+            #oauth-clients-list
+              p.has-text-grey Loading...
+
+        .card.mt-5
+          header.card-header
+            p.card-header-title
+              span.icon
+                i.mdi.mdi-shield-check-outline
+              | Authorized Apps
+          .card-content
+            p.mb-3 Applications you have authorized to access your account.
+            #oauth-authorized-list
+              p.has-text-grey Loading...
+
+    script.
+      (function() {
+        var statusEl = document.getElementById('api-token-status');
+        var displayEl = document.getElementById('api-token-display');
+        var valueEl = document.getElementById('api-token-value');
+        var genBtn = document.getElementById('btn-generate-token');
+        var revokeBtn = document.getElementById('btn-revoke-token');
+
+        function checkStatus() {
+          fetch('/account/api-token/status')
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+              if (d.exists) {
+                statusEl.innerHTML = '<p class="has-text-success"><span class="icon"><i class="mdi mdi-check-circle"></i></span> API token is active.</p>';
+                genBtn.style.display = 'none';
+                revokeBtn.style.display = '';
+              } else {
+                statusEl.innerHTML = '<p class="has-text-grey"><span class="icon"><i class="mdi mdi-close-circle"></i></span> No API token set.</p>';
+                genBtn.style.display = '';
+                revokeBtn.style.display = 'none';
+              }
+            });
+        }
+        checkStatus();
+
+        genBtn.addEventListener('click', function() {
+          genBtn.classList.add('is-loading');
+          fetch('/account/api-token', { method: 'POST', headers: { 'Accept': 'application/json' } })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+              genBtn.classList.remove('is-loading');
+              if (d.success && d.token) {
+                valueEl.textContent = d.token;
+                displayEl.style.display = '';
+                checkStatus();
+              } else {
+                alert('Failed to generate token: ' + (d.description || 'Unknown error'));
+              }
+            });
+        });
+
+        revokeBtn.addEventListener('click', function() {
+          if (!confirm('Revoke API token? Any services using it will stop working.')) return;
+          revokeBtn.classList.add('is-loading');
+          fetch('/account/api-token/revoke', { method: 'POST', headers: { 'Accept': 'application/json' } })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+              revokeBtn.classList.remove('is-loading');
+              displayEl.style.display = 'none';
+              checkStatus();
+            });
+        });
+      })();
+
+      // OAuth client management
+      (function() {
+        var createBtn = document.getElementById('btn-create-oauth-client');
+        var nameInput = document.getElementById('oauth-client-name');
+        var redirectInput = document.getElementById('oauth-client-redirect');
+        var secretDisplay = document.getElementById('oauth-client-secret-display');
+        var newClientId = document.getElementById('oauth-new-client-id');
+        var newClientSecret = document.getElementById('oauth-new-client-secret');
+        var clientsList = document.getElementById('oauth-clients-list');
+        var authorizedList = document.getElementById('oauth-authorized-list');
+
+        function loadClients() {
+          fetch('/oauth/clients', { headers: { 'Accept': 'application/json' } })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+              if (!d.success || !d.clients.length) {
+                clientsList.innerHTML = '<p class="has-text-grey">No OAuth clients registered.</p>';
+                return;
+              }
+              var html = '<table class="table is-fullwidth is-striped"><thead><tr><th>Name</th><th>Client ID</th><th>Redirect URI</th><th></th></tr></thead><tbody>';
+              d.clients.forEach(function(c) {
+                html += '<tr><td>' + c.name + '</td><td><code>' + c.clientId + '</code></td><td><small>' + c.redirectUri + '</small></td>';
+                html += '<td><button class="button is-small is-danger" onclick="deleteOAuthClient(\'' + c.clientId + '\')"><span class="icon is-small"><i class="mdi mdi-delete"></i></span></button></td></tr>';
+              });
+              html += '</tbody></table>';
+              clientsList.innerHTML = html;
+            });
+        }
+
+        function loadAuthorized() {
+          fetch('/oauth/authorized', { headers: { 'Accept': 'application/json' } })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+              if (!d.success || !d.apps.length) {
+                authorizedList.innerHTML = '<p class="has-text-grey">No authorized applications.</p>';
+                return;
+              }
+              var html = '<table class="table is-fullwidth is-striped"><thead><tr><th>Application</th><th>Permissions</th><th></th></tr></thead><tbody>';
+              d.apps.forEach(function(a) {
+                html += '<tr><td>' + a.name + '</td><td>' + a.scopes.join(', ') + '</td>';
+                html += '<td><button class="button is-small is-warning" onclick="revokeOAuthApp(\'' + a.clientId + '\')"><span class="icon is-small"><i class="mdi mdi-link-off"></i></span><span>Revoke</span></button></td></tr>';
+              });
+              html += '</tbody></table>';
+              authorizedList.innerHTML = html;
+            });
+        }
+
+        loadClients();
+        loadAuthorized();
+
+        createBtn.addEventListener('click', function() {
+          var name = nameInput.value.trim();
+          var redirect = redirectInput.value.trim();
+          if (!name || !redirect) return alert('Name and Redirect URI are required.');
+          createBtn.classList.add('is-loading');
+          fetch('/oauth/clients', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ name: name, redirect_uri: redirect })
+          })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+              createBtn.classList.remove('is-loading');
+              if (d.success) {
+                newClientId.textContent = d.clientId;
+                newClientSecret.textContent = d.clientSecret;
+                secretDisplay.style.display = '';
+                nameInput.value = '';
+                redirectInput.value = '';
+                loadClients();
+              } else {
+                alert('Failed: ' + (d.description || 'Unknown error'));
+              }
+            });
+        });
+
+        window.deleteOAuthClient = function(clientId) {
+          if (!confirm('Delete this OAuth client? All tokens issued for it will be revoked.')) return;
+          fetch('/oauth/clients/' + clientId, { method: 'DELETE', headers: { 'Accept': 'application/json' } })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+              if (d.success) loadClients();
+              else alert('Failed to delete client.');
+            });
+        };
+
+        window.revokeOAuthApp = function(clientId) {
+          if (!confirm('Revoke access for this application?')) return;
+          fetch('/oauth/authorized/revoke', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ client_id: clientId })
+          })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+              if (d.success) loadAuthorized();
+              else alert('Failed to revoke access.');
+            });
+        };
+      })();

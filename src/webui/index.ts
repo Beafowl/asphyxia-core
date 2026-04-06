@@ -56,6 +56,22 @@ import {
   SaveFlowerToken,
   GetFlowerToken,
   DeleteFlowerToken,
+  GenerateApiToken,
+  GetApiTokenByToken,
+  GetApiTokenExists,
+  DeleteApiToken,
+  CreateOAuthClient,
+  GetOAuthClient,
+  GetOAuthClientsByUser,
+  DeleteOAuthClient,
+  CreateOAuthCode,
+  ConsumeOAuthCode,
+  CreateOAuthAccessToken,
+  GetOAuthAccessToken,
+  RefreshOAuthAccessToken,
+  RevokeOAuthToken,
+  GetOAuthTokensByUser,
+  RevokeOAuthTokensByClientForUser,
 } from '../utils/EamuseIO';
 import { urlencoded, json } from 'body-parser';
 import path from 'path';
@@ -70,6 +86,9 @@ import archiver from 'archiver';
 const { serialize: nedbSerialize } = require('@seald-io/nedb/lib/model.js');
 
 const memorystore = createMemoryStore(session);
+
+const TACHI_BASE_URL = 'https://kamai.tachi.ac';
+const FLOWER_BASE_URL = 'https://kailua.projectflower.eu';
 
 const ADMIN_ONLY_PAGES = [
   'startup flags',
@@ -277,9 +296,134 @@ webui.get('/flower/callback', (req, res) => {
   </script><p>Authorization complete. You can close this window.</p></body></html>`);
 });
 
+// =========================================
+//             OAuth Provider (public endpoints)
+// =========================================
+
+// OAuth token endpoint - exchange authorization code for access token, or refresh
+webui.post(
+  '/oauth/token',
+  json({ limit: '1mb' }),
+  wrap(async (req, res) => {
+    const { grant_type, code, redirect_uri, client_id, client_secret, refresh_token } = req.body;
+
+    if (grant_type === 'authorization_code') {
+      if (!code || !redirect_uri || !client_id || !client_secret) {
+        return res.status(400).json({ error: 'invalid_request', error_description: 'Missing required parameters' });
+      }
+
+      const client = await GetOAuthClient(client_id);
+      if (!client || client.clientSecret !== client_secret) {
+        return res.status(401).json({ error: 'invalid_client', error_description: 'Invalid client credentials' });
+      }
+
+      const authCode = await ConsumeOAuthCode(code);
+      if (!authCode) {
+        return res.status(400).json({ error: 'invalid_grant', error_description: 'Invalid or expired authorization code' });
+      }
+
+      if (authCode.clientId !== client_id || authCode.redirectUri !== redirect_uri) {
+        return res.status(400).json({ error: 'invalid_grant', error_description: 'Code does not match request parameters' });
+      }
+
+      const tokens = await CreateOAuthAccessToken(client_id, authCode.username, authCode.scopes);
+      if (!tokens) {
+        return res.status(500).json({ error: 'server_error', error_description: 'Failed to create access token' });
+      }
+
+      return res.json({
+        access_token: tokens.accessToken,
+        token_type: 'Bearer',
+        expires_in: 86400,
+        refresh_token: tokens.refreshToken,
+        scope: authCode.scopes.join(' '),
+      });
+    }
+
+    if (grant_type === 'refresh_token') {
+      if (!refresh_token || !client_id || !client_secret) {
+        return res.status(400).json({ error: 'invalid_request', error_description: 'Missing required parameters' });
+      }
+
+      const client = await GetOAuthClient(client_id);
+      if (!client || client.clientSecret !== client_secret) {
+        return res.status(401).json({ error: 'invalid_client', error_description: 'Invalid client credentials' });
+      }
+
+      const result = await RefreshOAuthAccessToken(refresh_token);
+      if (!result) {
+        return res.status(400).json({ error: 'invalid_grant', error_description: 'Invalid refresh token' });
+      }
+
+      return res.json({
+        access_token: result.accessToken,
+        token_type: 'Bearer',
+        expires_in: result.expiresIn,
+        refresh_token: result.refreshToken,
+      });
+    }
+
+    return res.status(400).json({ error: 'unsupported_grant_type', error_description: 'Only authorization_code and refresh_token grant types are supported' });
+  })
+);
+
+// OAuth token revocation (public, per RFC 7009)
+webui.post(
+  '/oauth/revoke',
+  json({ limit: '1mb' }),
+  wrap(async (req, res) => {
+    const { token } = req.body;
+    if (token) await RevokeOAuthToken(token);
+    // Always return 200 per spec
+    res.json({ success: true });
+  })
+);
+
+// API token auth - allows Bearer token authentication for API endpoints
+// Checks both API tokens and OAuth access tokens
+webui.use(async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return next();
+
+  const token = authHeader.substring(7);
+
+  // Try API token first
+  const user = await GetApiTokenByToken(token);
+  if (user) {
+    req.session.user = {
+      username: user.username,
+      cardNumber: user.cardNumber,
+      admin: user.admin,
+    };
+    (req as any).isApiAuth = true;
+    return next();
+  }
+
+  // Try OAuth access token
+  const oauthUser = await GetOAuthAccessToken(token);
+  if (oauthUser) {
+    req.session.user = {
+      username: oauthUser.username,
+      cardNumber: oauthUser.cardNumber,
+      admin: oauthUser.admin,
+    };
+    (req as any).isApiAuth = true;
+    (req as any).oauthScopes = oauthUser.scopes;
+    return next();
+  }
+
+  return res.status(401).json({ success: false, description: 'Invalid API token' });
+});
+
 // Auth middleware - all routes below require login
 webui.use((req, res, next) => {
-  if (!req.session.user) return res.redirect('/login');
+  if (!req.session.user) {
+    // API requests get a JSON 401 instead of a redirect
+    if (req.headers.authorization || req.headers.accept === 'application/json') {
+      return res.status(401).json({ success: false, description: 'Authentication required' });
+    }
+    return res.redirect('/login');
+  }
   next();
 });
 
@@ -346,6 +490,608 @@ webui.post(
   })
 );
 
+// API token management
+webui.post(
+  '/account/api-token',
+  json({ limit: '1mb' }),
+  wrap(async (req, res) => {
+    const token = await GenerateApiToken(req.session.user!.username);
+    if (!token) {
+      if (req.headers.accept === 'application/json' || (req as any).isApiAuth) {
+        return res.status(500).json({ success: false, description: 'Failed to generate token' });
+      }
+      req.flash('formWarn', 'Failed to generate API token.');
+      return res.redirect('/account');
+    }
+
+    if (req.headers.accept === 'application/json' || (req as any).isApiAuth) {
+      return res.json({ success: true, token });
+    }
+    req.flash('formOk', `API token generated. Copy it now — it won't be shown again: ${token}`);
+    res.redirect('/account');
+  })
+);
+
+webui.post(
+  '/account/api-token/revoke',
+  wrap(async (req, res) => {
+    await DeleteApiToken(req.session.user!.username);
+    if (req.headers.accept === 'application/json' || (req as any).isApiAuth) {
+      return res.json({ success: true });
+    }
+    req.flash('formOk', 'API token revoked.');
+    res.redirect('/account');
+  })
+);
+
+webui.get(
+  '/account/api-token/status',
+  wrap(async (req, res) => {
+    const exists = await GetApiTokenExists(req.session.user!.username);
+    res.json({ success: true, exists });
+  })
+);
+
+// API documentation page
+webui.get(
+  '/api-docs',
+  wrap(async (req, res) => {
+    const host = req.headers.host || 'localhost:8083';
+    const protocol = req.protocol;
+    res.render('api_docs', data(req, 'API Documentation', 'core', {
+      baseUrl: `${protocol}://${host}`,
+      tachiEnabled: !!(CONFIG.tachi_client_id && CONFIG.tachi_client_secret),
+      flowerEnabled: !!(CONFIG.flower_client_id && CONFIG.flower_client_secret),
+    }));
+  })
+);
+
+// =========================================
+//             OAuth Provider (protected endpoints)
+// =========================================
+
+// OAuth authorization page - user sees this to approve/deny access
+webui.get(
+  '/oauth/authorize',
+  wrap(async (req, res) => {
+    const { response_type, client_id, redirect_uri, scope, state } = req.query as Record<string, string>;
+
+    if (response_type !== 'code') {
+      return res.status(400).render('oauth_authorize', data(req, 'OAuth Authorization', 'core', {
+        error: 'Only response_type=code is supported.',
+      }));
+    }
+
+    if (!client_id || !redirect_uri) {
+      return res.status(400).render('oauth_authorize', data(req, 'OAuth Authorization', 'core', {
+        error: 'Missing client_id or redirect_uri.',
+      }));
+    }
+
+    const client = await GetOAuthClient(client_id);
+    if (!client) {
+      return res.status(400).render('oauth_authorize', data(req, 'OAuth Authorization', 'core', {
+        error: 'Unknown application (invalid client_id).',
+      }));
+    }
+
+    if (client.redirectUri !== redirect_uri) {
+      return res.status(400).render('oauth_authorize', data(req, 'OAuth Authorization', 'core', {
+        error: 'Redirect URI does not match the registered application.',
+      }));
+    }
+
+    const scopes = scope ? scope.split(' ').filter(Boolean) : ['profile'];
+
+    res.render('oauth_authorize', data(req, 'OAuth Authorization', 'core', {
+      clientName: client.name,
+      clientId: client_id,
+      redirectUri: redirect_uri,
+      scopes,
+      state: state || '',
+    }));
+  })
+);
+
+// OAuth authorization decision - user approves or denies
+webui.post(
+  '/oauth/authorize',
+  wrap(async (req, res) => {
+    const { client_id, redirect_uri, scope, state, decision } = req.body;
+
+    if (!client_id || !redirect_uri) {
+      return res.status(400).json({ error: 'Missing parameters' });
+    }
+
+    const client = await GetOAuthClient(client_id);
+    if (!client || client.redirectUri !== redirect_uri) {
+      return res.status(400).json({ error: 'Invalid client or redirect URI' });
+    }
+
+    const redirectUrl = new URL(redirect_uri);
+
+    if (decision !== 'approve') {
+      redirectUrl.searchParams.set('error', 'access_denied');
+      if (state) redirectUrl.searchParams.set('state', state);
+      return res.redirect(redirectUrl.toString());
+    }
+
+    const scopes = scope ? scope.split(' ').filter(Boolean) : ['profile'];
+    const code = await CreateOAuthCode(client_id, req.session.user!.username, redirect_uri, scopes);
+    if (!code) {
+      redirectUrl.searchParams.set('error', 'server_error');
+      if (state) redirectUrl.searchParams.set('state', state);
+      return res.redirect(redirectUrl.toString());
+    }
+
+    redirectUrl.searchParams.set('code', code);
+    if (state) redirectUrl.searchParams.set('state', state);
+    res.redirect(redirectUrl.toString());
+  })
+);
+
+// OAuth client management - create a new client application
+webui.post(
+  '/oauth/clients',
+  json({ limit: '1mb' }),
+  wrap(async (req, res) => {
+    const { name, redirect_uri } = req.body;
+    if (!name || !redirect_uri) {
+      return res.status(400).json({ success: false, description: 'Name and redirect_uri are required' });
+    }
+
+    try {
+      new URL(redirect_uri);
+    } catch {
+      return res.status(400).json({ success: false, description: 'Invalid redirect_uri — must be a valid URL' });
+    }
+
+    const result = await CreateOAuthClient(name, redirect_uri, req.session.user!.username);
+    if (!result) {
+      return res.status(500).json({ success: false, description: 'Failed to create client' });
+    }
+
+    res.json({ success: true, clientId: result.clientId, clientSecret: result.clientSecret });
+  })
+);
+
+// List user's OAuth clients
+webui.get(
+  '/oauth/clients',
+  wrap(async (req, res) => {
+    const clients = await GetOAuthClientsByUser(req.session.user!.username);
+    res.json({
+      success: true,
+      clients: clients.map((c: any) => ({
+        clientId: c.clientId,
+        name: c.name,
+        redirectUri: c.redirectUri,
+      })),
+    });
+  })
+);
+
+// Delete an OAuth client
+webui.delete(
+  '/oauth/clients/:clientId',
+  wrap(async (req, res) => {
+    const username = req.session.user!.username;
+    const { clientId } = req.params;
+
+    const client = await GetOAuthClient(clientId);
+    if (!client) {
+      return res.status(404).json({ success: false, description: 'Client not found' });
+    }
+    // Allow owner or admin to delete
+    if (client.createdBy !== username && !req.session.user!.admin) {
+      return res.status(403).json({ success: false, description: 'Not authorized to delete this client' });
+    }
+
+    await DeleteOAuthClient(clientId, client.createdBy);
+    res.json({ success: true });
+  })
+);
+
+// List authorized apps for current user & revoke
+webui.get(
+  '/oauth/authorized',
+  wrap(async (req, res) => {
+    const tokens = await GetOAuthTokensByUser(req.session.user!.username);
+    // Group by client and return unique client names
+    const seen = new Set<string>();
+    const apps: any[] = [];
+    for (const t of tokens) {
+      if (seen.has(t.clientId)) continue;
+      seen.add(t.clientId);
+      const client = await GetOAuthClient(t.clientId);
+      apps.push({
+        clientId: t.clientId,
+        name: client ? client.name : 'Unknown App',
+        scopes: t.scopes,
+      });
+    }
+    res.json({ success: true, apps });
+  })
+);
+
+webui.post(
+  '/oauth/authorized/revoke',
+  json({ limit: '1mb' }),
+  wrap(async (req, res) => {
+    const { client_id } = req.body;
+    if (!client_id) return res.status(400).json({ success: false, description: 'client_id is required' });
+    await RevokeOAuthTokensByClientForUser(client_id, req.session.user!.username);
+    res.json({ success: true });
+  })
+);
+
+// =========================================
+//             External API endpoints
+// =========================================
+
+webui.get(
+  '/api/profile',
+  wrap(async (req, res) => {
+    const username = req.session.user!.username;
+    const cardNumber = req.session.user!.cardNumber;
+    let refid: string | null = null;
+
+    if (cardNumber) {
+      const card = await FindCard(cardNumber);
+      if (card && card.__refid) refid = card.__refid;
+    }
+
+    res.json({ success: true, username, cardNumber, refid });
+  })
+);
+
+webui.post(
+  '/api/tachi/sync',
+  json({ limit: '1mb' }),
+  wrap(async (req, res) => {
+    const username = req.session.user!.username;
+    const cardNumber = req.session.user!.cardNumber;
+
+    // Get Tachi token
+    const tachiToken = await GetTachiToken(username);
+    if (!tachiToken) {
+      return res.status(400).json({ success: false, description: 'Not authorized with Tachi. Connect Tachi from the WebUI first.' });
+    }
+
+    // Resolve refid
+    if (!cardNumber) {
+      return res.status(400).json({ success: false, description: 'No card number linked to account' });
+    }
+    const card = await FindCard(cardNumber);
+    if (!card || !card.__refid) {
+      return res.status(400).json({ success: false, description: 'No profile found for card' });
+    }
+    const refid = card.__refid;
+
+    // Get local SDVX scores
+    const plugin = { identifier: 'sdvx@asphyxia', core: false };
+    const allScores = await APIFind(plugin, refid, { collection: 'music' });
+    if (!allScores || allScores.length === 0) {
+      return res.json({ success: true, exported: 0, description: 'No scores to export' });
+    }
+
+    // Filter by export timestamp
+    const lastExport = await GetTachiExportTimestamp(refid);
+    const scoresToExport = lastExport
+      ? allScores.filter((s: any) => {
+          const updated = s.updatedAt ? new Date(s.updatedAt).getTime() : 0;
+          const created = s.createdAt ? new Date(s.createdAt).getTime() : 0;
+          return Math.max(updated, created) > lastExport;
+        })
+      : allScores;
+
+    if (scoresToExport.length === 0) {
+      return res.json({ success: true, exported: 0, description: 'No new scores since last export' });
+    }
+
+    // Detect version
+    const v7Profile = await APIFindOne(plugin, refid, { collection: 'profile', version: 7 });
+    const isNabla = !!v7Profile;
+
+    // Map scores to Tachi batch-manual format
+    // SDVX clear types: EG(v6): 0=none,1=played,2=clear,3=excessive,4=uc,5=puc,6=mxv
+    //                   Nabla(v7): 0=none,1=played,2=clear,3=excessive,4=mxv,5=uc,6=puc
+    const EG_CLEAR_TO_LAMP: Record<number, string> = {
+      0: 'FAILED', 1: 'FAILED', 2: 'CLEAR', 3: 'EXCESSIVE CLEAR',
+      4: 'ULTIMATE CHAIN', 5: 'PERFECT ULTIMATE CHAIN', 6: 'MAXXIVE CLEAR',
+    };
+    const NABLA_CLEAR_TO_LAMP: Record<number, string> = {
+      0: 'FAILED', 1: 'FAILED', 2: 'CLEAR', 3: 'EXCESSIVE CLEAR',
+      4: 'MAXXIVE CLEAR', 5: 'ULTIMATE CHAIN', 6: 'PERFECT ULTIMATE CHAIN',
+    };
+    const clearToLamp = isNabla ? NABLA_CLEAR_TO_LAMP : EG_CLEAR_TO_LAMP;
+
+    const TYPE_TO_DIFF: Record<number, string> = {
+      0: 'NOV', 1: 'ADV', 2: 'EXH', 3: 'INF', 4: 'MXM', 5: 'ULT',
+    };
+
+    const tachiScores: any[] = [];
+    for (const s of scoresToExport) {
+      const lamp = clearToLamp[s.clear];
+      const diff = TYPE_TO_DIFF[s.type];
+      if (!lamp || diff === undefined) continue;
+
+      const entry: any = {
+        score: s.score,
+        lamp,
+        matchType: 'inGameID',
+        identifier: String(s.mid),
+        difficulty: diff,
+      };
+      if (s.timeAchieved || s.createdAt) {
+        entry.timeAchieved = s.timeAchieved || new Date(s.createdAt).getTime();
+      }
+      if (s.exscore) entry.optional = { exScore: s.exscore };
+      tachiScores.push(entry);
+    }
+
+    if (tachiScores.length === 0) {
+      return res.json({ success: true, exported: 0, description: 'No valid scores to export' });
+    }
+
+    // Build batch-manual payload and send to Tachi
+    const batchManual = JSON.stringify({
+      meta: { game: 'sdvx', playtype: 'Single', service: 'Asphyxia' },
+      scores: tachiScores,
+    });
+
+    const https = require('https');
+    const boundary = '----AsphyxiaTachi' + Date.now();
+    const bodyParts = [
+      `--${boundary}\r\n`,
+      `Content-Disposition: form-data; name="importType"\r\n\r\n`,
+      `file/batch-manual\r\n`,
+      `--${boundary}\r\n`,
+      `Content-Disposition: form-data; name="scoreData"; filename="scores.json"\r\n`,
+      `Content-Type: application/json\r\n\r\n`,
+      batchManual + '\r\n',
+      `--${boundary}--\r\n`,
+    ];
+    const postData = Buffer.from(bodyParts.join(''));
+
+    const importResult: any = await new Promise((resolve, reject) => {
+      const importReq = https.request(
+        `${TACHI_BASE_URL}/api/v1/import/file`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${tachiToken}`,
+            'Content-Type': `multipart/form-data; boundary=${boundary}`,
+            'Content-Length': postData.length,
+            'X-User-Intent': 'true',
+          },
+        },
+        (importRes: any) => {
+          let body = '';
+          importRes.on('data', (chunk: string) => (body += chunk));
+          importRes.on('end', () => {
+            try { resolve(JSON.parse(body)); }
+            catch { reject(new Error('Failed to parse Tachi import response')); }
+          });
+        }
+      );
+      importReq.on('error', reject);
+      importReq.write(postData);
+      importReq.end();
+    });
+
+    if (importResult.success) {
+      await SaveTachiExportTimestamp(refid, Date.now());
+    }
+
+    res.json({
+      success: importResult.success,
+      description: importResult.description || (importResult.success ? 'Export complete' : 'Export failed'),
+      exported: tachiScores.length,
+      body: importResult.body,
+    });
+  })
+);
+
+webui.post(
+  '/api/flower/sync',
+  json({ limit: '1mb' }),
+  wrap(async (req, res) => {
+    const username = req.session.user!.username;
+    const cardNumber = req.session.user!.cardNumber;
+
+    // Get Flower token
+    const flowerToken = await GetFlowerToken(username);
+    if (!flowerToken) {
+      return res.status(400).json({ success: false, description: 'Not authorized with Project Flower. Connect from the WebUI first.' });
+    }
+
+    // Resolve refid
+    if (!cardNumber) {
+      return res.status(400).json({ success: false, description: 'No card number linked to account' });
+    }
+    const card = await FindCard(cardNumber);
+    if (!card || !card.__refid) {
+      return res.status(400).json({ success: false, description: 'No profile found for card' });
+    }
+    const refid = card.__refid;
+
+    // Fetch player bests from Flower (with pagination)
+    let allBests: any[] = [];
+    let nextUrl: string | null = '/api/sdvx/v1/player_bests';
+
+    while (nextUrl) {
+      const result = await flowerApiRequest('GET', nextUrl, flowerToken);
+      if (result.status !== 200 || !result.data) {
+        return res.status(502).json({
+          success: false,
+          description: 'Failed to fetch scores from Project Flower (status ' + result.status + ')',
+        });
+      }
+
+      const fdata = result.data;
+      if (Array.isArray(fdata)) {
+        allBests = allBests.concat(fdata);
+      } else if (fdata && typeof fdata === 'object') {
+        if (fdata._embedded) {
+          for (const key of Object.keys(fdata._embedded)) {
+            if (Array.isArray(fdata._embedded[key])) {
+              allBests = allBests.concat(fdata._embedded[key]);
+            }
+          }
+        } else {
+          for (const key of ['_items', 'items', 'scores', 'data', 'results', 'records', 'bests', 'player_bests']) {
+            if (Array.isArray(fdata[key])) {
+              allBests = allBests.concat(fdata[key]);
+              break;
+            }
+          }
+        }
+      }
+
+      nextUrl = fdata?._links?._next || fdata?._links?.next?.href || null;
+    }
+
+    if (allBests.length === 0) {
+      return res.json({ success: true, saved: 0, skipped: 0, description: 'No scores found on Project Flower' });
+    }
+
+    // Normalize scores from Flower format to internal format
+    // Flower fields: music_id, music_difficulty (0-5), score, clear_type, grade
+    const FLOWER_CLEAR: Record<string, number> = {
+      'PLAYED': 1, 'COMP': 2, 'COMP_EX': 3, 'UC': 4, 'PUC': 5,
+    };
+    const FLOWER_DIFF: Record<string, number> = {
+      'novice': 0, 'advanced': 1, 'exhaust': 2, 'infinite': 3, 'maximum': 4, 'ultimate': 5,
+      'NOV': 0, 'ADV': 1, 'EXH': 2, 'INF': 3, 'MXM': 4, 'ULT': 5,
+    };
+
+    const scores: any[] = [];
+    for (const b of allBests) {
+      const mid = b.music_id || b.musicId || b.id;
+      if (mid === undefined) continue;
+
+      let type = b.music_difficulty ?? b.musicDifficulty ?? b.difficulty;
+      if (typeof type === 'string') type = FLOWER_DIFF[type] ?? parseInt(type);
+      if (type === undefined || type === null) continue;
+
+      let clear = b.clear_type ?? b.clearType ?? b.clear ?? 1;
+      if (typeof clear === 'string') clear = FLOWER_CLEAR[clear] ?? 1;
+
+      const score = b.score || 0;
+      scores.push({ mid: Number(mid), type: Number(type), score, clear, exscore: b.ex_score || b.exScore || 0 });
+    }
+
+    // Save scores using the same logic as /flower/save-scores
+    const plugin = { identifier: 'sdvx@asphyxia', core: false };
+    let saved = 0;
+    let skipped = 0;
+
+    // Load music_db for volforce
+    const musicDbPath = path.join(PLUGIN_PATH, 'sdvx@asphyxia', 'webui', 'asset', 'json', 'music_db.json');
+    let mdb: any = null;
+    if (existsSync(musicDbPath)) {
+      mdb = JSON.parse(readFileSync(musicDbPath, 'utf8'));
+      const customDbPath = path.join(PLUGIN_PATH, 'sdvx@asphyxia', 'webui', 'asset', 'json', 'custom_music_db.json');
+      if (existsSync(customDbPath)) {
+        try {
+          const customDb = JSON.parse(readFileSync(customDbPath, 'utf8'));
+          if (customDb?.mdb?.music?.length) mdb.mdb.music = mdb.mdb.music.concat(customDb.mdb.music);
+        } catch {}
+      }
+    }
+
+    const diffName = ['novice', 'advanced', 'exhaust', 'infinite', 'maximum', 'ultimate'];
+    function getDiffLevel(mid: number, type: number): number {
+      if (!mdb) return 0;
+      const song = mdb.mdb.music.find((m: any) => m.id == mid);
+      if (!song) return 0;
+      return parseFloat(song.difficulty?.[diffName[type]]) || 0;
+    }
+    const medalCoef = [0, 0.5, 1.0, 1.02, 1.04, 1.06, 1.1];
+    const gradeCoef = [0, 0.8, 0.82, 0.85, 0.88, 0.91, 0.94, 0.97, 1.0, 1.02, 1.05];
+    function computeForce(diff: number, score: number, medal: number, grade: number) {
+      return Math.floor(diff * (score / 10000000) * (gradeCoef[grade] || 0.8) * (medalCoef[medal] || 0.5) * 20);
+    }
+    function gradeFromScore(score: number): number {
+      if (score >= 9900000) return 10;
+      if (score >= 9800000) return 9;
+      if (score >= 9700000) return 8;
+      if (score >= 9500000) return 7;
+      if (score >= 9300000) return 6;
+      if (score >= 9000000) return 5;
+      if (score >= 8700000) return 4;
+      if (score >= 7500000) return 3;
+      if (score >= 6500000) return 2;
+      return 1;
+    }
+
+    const v7Profile = await APIFindOne(plugin, refid, { collection: 'profile', version: 7 });
+    const targetVersion = v7Profile ? 7 : 6;
+
+    // v6→v7 clear remap
+    const nblClearLamp = [0, 1, 2, 3, 5, 6, 4];
+    if (targetVersion === 7) {
+      for (const score of scores) {
+        score.clear = nblClearLamp[score.clear] ?? score.clear;
+      }
+    }
+    for (const score of scores) {
+      if (score.clear === 6 && score.score < 10000000) score.clear = 4;
+    }
+
+    const NABLA_CLEAR_RANK: Record<number, number> = { 0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6 };
+    function clearRank(c: number) { return NABLA_CLEAR_RANK[c] ?? 0; }
+
+    for (const score of scores) {
+      try {
+        const grade = gradeFromScore(score.score);
+        let volforce = 0;
+        if (targetVersion === 7) {
+          const diffLevel = getDiffLevel(score.mid, score.type);
+          if (diffLevel > 0) volforce = computeForce(diffLevel, score.score, score.clear, grade);
+        }
+
+        const existing = await APIFind(plugin, refid, {
+          collection: 'music', mid: score.mid, type: score.type, version: targetVersion,
+        });
+
+        if (existing && existing.length > 0) {
+          const ex = existing[0];
+          if (score.score > ex.score || clearRank(score.clear) > clearRank(ex.clear) || (!ex.grade && grade)) {
+            const update: any = {};
+            if (score.score > ex.score) update.score = score.score;
+            if (clearRank(score.clear) > clearRank(ex.clear)) update.clear = score.clear;
+            if (grade && (!ex.grade || grade > ex.grade)) update.grade = grade;
+            if (score.exscore && (!ex.exscore || score.exscore > ex.exscore)) update.exscore = score.exscore;
+            if (volforce && (!ex.volforce || volforce > ex.volforce)) update.volforce = volforce;
+            if (Object.keys(update).length > 0) {
+              await APIUpdate(plugin, refid,
+                { collection: 'music', mid: score.mid, type: score.type, version: targetVersion },
+                { $set: update }
+              );
+              saved++;
+            } else { skipped++; }
+          } else { skipped++; }
+          continue;
+        }
+
+        await APIInsert(plugin, refid, {
+          collection: 'music', mid: score.mid, type: score.type, score: score.score,
+          clear: score.clear, exscore: score.exscore || 0, grade,
+          buttonRate: 0, longRate: 0, volRate: 0, volforce,
+          version: targetVersion, dbver: 1,
+        });
+        saved++;
+      } catch (err) {
+        Logger.error(`Failed to save Flower score mid=${score.mid} type=${score.type}: ${err}`);
+      }
+    }
+
+    res.json({ success: true, saved, skipped, total: allBests.length });
+  })
+);
+
 // User management (admin only)
 webui.get(
   '/users',
@@ -372,8 +1118,6 @@ webui.post(
 );
 
 // Tachi API endpoints
-const TACHI_BASE_URL = 'https://kamai.tachi.ac';
-
 webui.post(
   '/tachi/exchange',
   json({ limit: '1mb' }),
@@ -1001,8 +1745,6 @@ webui.get(
 );
 
 // Project Flower API endpoints
-const FLOWER_BASE_URL = 'https://kailua.projectflower.eu';
-
 function flowerApiRequest(
   method: string,
   urlPath: string,

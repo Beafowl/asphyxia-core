@@ -42,7 +42,14 @@ export const EamuseMiddleware: RequestHandler = async (req, res, next) => {
 
   const agent = req.headers['user-agent'] || '';
 
-  if (agent.indexOf('Mozilla') >= 0) {
+  // Only process actual e-amusement protocol requests; skip everything else
+  const isEamuse =
+    agent.indexOf('EAMUSE') >= 0 ||
+    agent.indexOf('libcurl') >= 0 ||
+    !!req.headers['x-eamuse-info'] ||
+    !!req.headers['x-compress'];
+
+  if (!isEamuse) {
     (req as any).skip = true;
     return next();
   }
