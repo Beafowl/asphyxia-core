@@ -435,6 +435,29 @@ webui.use((req, res, next) => {
   next();
 });
 
+// Current user info (JSON, for API/OAuth consumers)
+webui.get(
+  '/api/me',
+  wrap(async (req, res) => {
+    const user = req.session.user!;
+    const result: any = { success: true, username: user.username, admin: user.admin };
+
+    if (user.cardNumber) {
+      result.cardNumber = user.cardNumber;
+      const card = await FindCard(user.cardNumber);
+      if (card && card.__refid) {
+        result.refid = card.__refid;
+        const profile = await FindProfile(card.__refid);
+        if (profile && profile.name) {
+          result.playerName = profile.name;
+        }
+      }
+    }
+
+    res.json(result);
+  })
+);
+
 // Account settings
 webui.get(
   '/account',
