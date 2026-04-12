@@ -60,14 +60,14 @@ block content
               | API Token
           .card-content
             p.mb-3 Generate an API token to use with external tools like a Discord bot. One token per account.
-            #api-token-status
+            #api-token-status(style="margin-bottom:1.5rem")
               p.has-text-grey Loading...
-            #api-token-display.mt-3(style="display:none")
+            #api-token-display(style="display:none;margin-top:1rem")
               .notification.is-warning.is-light
                 p
                   strong Copy this token now — it will not be shown again:
                 pre#api-token-value(style="word-break:break-all; user-select:all; cursor:pointer")
-            .buttons.mt-4
+            .buttons(style="margin-top:1.5rem")
               button#btn-generate-token.button.is-link
                 span.icon.is-small
                   i.mdi.mdi-key-plus

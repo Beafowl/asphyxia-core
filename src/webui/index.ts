@@ -1,5 +1,6 @@
 import { Router, RequestHandler, Request } from 'express';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'fs';
+import crypto from 'crypto';
 import session from 'express-session';
 import cookies from 'cookie-parser';
 import createMemoryStore from 'memorystore';
@@ -95,6 +96,7 @@ const ADMIN_ONLY_PAGES = [
   'unlock events',
   'update webui assets',
   'weekly score attack',
+  'custom charts admin',
 ];
 
 declare module 'express-session' {
@@ -103,11 +105,25 @@ declare module 'express-session' {
   }
 }
 
+// Generate or load a persistent session secret
+function getSessionSecret(): string {
+  const secretPath = path.join(ARGS.savedata || 'savedata', '.session_secret');
+  try {
+    if (existsSync(secretPath)) {
+      const stored = readFileSync(secretPath, 'utf8').trim();
+      if (stored.length >= 32) return stored;
+    }
+  } catch {}
+  const secret = crypto.randomBytes(32).toString('hex');
+  try { writeFileSync(secretPath, secret, 'utf8'); } catch {}
+  return secret;
+}
+
 export const webui = Router();
 webui.use(
   session({
-    cookie: { maxAge: 86400000, sameSite: true },
-    secret: 'c0dedeadc0debeef',
+    cookie: { maxAge: 86400000, sameSite: 'lax', httpOnly: true },
+    secret: getSessionSecret(),
     resave: true,
     saveUninitialized: false,
     store: new memorystore({ checkPeriod: 86400000 }),
@@ -122,6 +138,19 @@ let wrap =
   (...args: any[]) =>
     (fn as any)(...args).catch(args[2]);
 
+// Simple rate limiter for login attempts
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    loginAttempts.set(ip, { count: 1, resetAt: now + 15 * 60 * 1000 }); // 15 min window
+    return false;
+  }
+  entry.count++;
+  return entry.count > 10; // Max 10 attempts per 15 minutes
+}
+
 // Auth routes (accessible without login)
 webui.get('/login', (req, res) => {
   if (req.session.user) return res.redirect('/');
@@ -131,6 +160,12 @@ webui.get('/login', (req, res) => {
 webui.post(
   '/login',
   wrap(async (req, res) => {
+    const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
+    if (isRateLimited(clientIp)) {
+      req.flash('authError', 'Too many login attempts. Please try again later.');
+      return res.redirect('/login');
+    }
+
     const { username, password } = req.body;
     if (!username || !password) {
       req.flash('authError', 'Please fill in all fields.');
@@ -265,16 +300,17 @@ webui.get('/tachi/config', (_req, res) => {
 webui.get('/tachi/callback', (req, res) => {
   const code = req.query.code as string;
   if (!code) return res.status(400).send('Missing authorization code');
+  // Sanitize code to prevent XSS: only allow alphanumeric + common OAuth chars
+  const safeCode = code.replace(/[^a-zA-Z0-9_\-\.]/g, '');
   res.send(`<html><body><script>
     console.log('[Tachi Callback] window.opener:', !!window.opener);
     if (window.opener) {
-      window.opener.postMessage({ type: 'tachi-auth', code: '${code}' }, '*');
+      window.opener.postMessage({ type: 'tachi-auth', code: '${safeCode}' }, window.location.origin);
       window.close();
     } else {
       document.getElementById('msg').innerHTML =
         '<strong>Authorization code received but could not communicate with the main window.</strong><br>' +
-        'This can happen if popups are restricted. Please close this window and try again, or ' +
-        'copy this code and use it manually: <code>${code}</code>';
+        'This can happen if popups are restricted. Please close this window and try again.';
     }
   </script><p id="msg">Authorization complete. You can close this window.</p></body></html>`);
 });
@@ -288,9 +324,10 @@ webui.get('/flower/config', (_req, res) => {
 webui.get('/flower/callback', (req, res) => {
   const code = req.query.code as string;
   if (!code) return res.status(400).send('Missing authorization code');
+  const safeCode = code.replace(/[^a-zA-Z0-9_\-\.]/g, '');
   res.send(`<html><body><script>
     if (window.opener) {
-      window.opener.postMessage({ type: 'flower-auth', code: '${code}' }, '*');
+      window.opener.postMessage({ type: 'flower-auth', code: '${safeCode}' }, window.location.origin);
     }
     window.close();
   </script><p>Authorization complete. You can close this window.</p></body></html>`);
@@ -838,6 +875,7 @@ webui.post(
       const lamp = clearToLamp[s.clear];
       const diff = TYPE_TO_DIFF[s.type];
       if (!lamp || diff === undefined) continue;
+      if (s.score <= 0) continue; // Don't export zero-score entries
 
       const entry: any = {
         score: s.score,
@@ -998,11 +1036,12 @@ webui.post(
       if (typeof type === 'string') type = FLOWER_DIFF[type] ?? parseInt(type);
       if (type === undefined || type === null) continue;
 
-      let clear = b.clear_type ?? b.clearType ?? b.clear ?? 1;
+      let clear = b.best_clear_type ?? b.clear_type ?? b.clearType ?? b.clear ?? 1;
       if (typeof clear === 'string') clear = FLOWER_CLEAR[clear] ?? 1;
 
-      const score = b.score || 0;
-      scores.push({ mid: Number(mid), type: Number(type), score, clear, exscore: b.ex_score || b.exScore || 0 });
+      const score = b.best_score || b.score || 0;
+      if (score <= 0) continue; // Skip entries with no actual score (e.g. Flower "PLAYED" placeholders)
+      scores.push({ mid: Number(mid), type: Number(type), score, clear, exscore: b.ex_score || b.exScore || 0, timeAchieved: b.best_score_timestamp || null });
     }
 
     // Save scores using the same logic as /flower/save-scores
@@ -1099,12 +1138,17 @@ webui.post(
           continue;
         }
 
-        await APIInsert(plugin, refid, {
+        const doc: any = {
           collection: 'music', mid: score.mid, type: score.type, score: score.score,
           clear: score.clear, exscore: score.exscore || 0, grade,
           buttonRate: 0, longRate: 0, volRate: 0, volforce,
           version: targetVersion, dbver: 1,
-        });
+        };
+        if (score.timeAchieved) {
+          doc.createdAt = new Date(score.timeAchieved);
+          doc.updatedAt = new Date(score.timeAchieved);
+        }
+        await APIInsert(plugin, refid, doc);
         saved++;
       } catch (err) {
         Logger.error(`Failed to save Flower score mid=${score.mid} type=${score.type}: ${err}`);
@@ -2071,6 +2115,8 @@ webui.post(
 
     for (const score of scores) {
       try {
+        if (score.score <= 0) { skipped++; continue; } // Skip zero-score entries
+
         // Compute grade from score if not provided
         const grade = score.grade || gradeFromScore(score.score);
 
@@ -3041,6 +3087,227 @@ webui.delete(
     } else {
       return res.sendStatus(404);
     }
+  })
+);
+
+// Nautica sync script download — generates a .bat with the server URL baked in
+webui.get(
+  '/api/nautica/sync-script',
+  wrap(async (req, res) => {
+    const serverUrl = `${req.protocol}://${req.get('host')}`;
+    const script = `@echo off
+chcp 65001 >nul
+title Asphyxia Custom Charts Sync
+echo ============================================
+echo   Asphyxia Custom Charts Sync
+echo ============================================
+echo.
+
+set "SERVER_URL=${serverUrl}"
+set "GAME_ROOT=%~dp0"
+set "GAME_EXE=spice64.exe"
+set "VERSION_FILE=%GAME_ROOT%.asphyxia_custom_version"
+
+echo Server:    %SERVER_URL%
+echo Game Root: %GAME_ROOT%
+echo.
+
+:: Check for updates
+echo Checking for chart updates...
+set "REMOTE_VERSION="
+set "MIX_NAME="
+for /f "tokens=*" %%i in ('powershell -NoProfile -Command "try { $r = Invoke-RestMethod -Uri '%SERVER_URL%/api/nautica/version' -TimeoutSec 5; Write-Output $r.version; Write-Output $r.mixName } catch { Write-Output 'ERROR' }"') do (
+    if not defined REMOTE_VERSION (
+        set "REMOTE_VERSION=%%i"
+    ) else (
+        set "MIX_NAME=%%i"
+    )
+)
+
+if "%REMOTE_VERSION%"=="ERROR" (
+    echo   Server unreachable, starting game without sync...
+    goto :launch
+)
+if "%REMOTE_VERSION%"=="" (
+    echo   No custom charts on server, starting game...
+    goto :launch
+)
+if not defined MIX_NAME set "MIX_NAME=asphyxia_custom"
+
+:: Compare versions
+set "LOCAL_VERSION="
+if exist "%VERSION_FILE%" set /p LOCAL_VERSION=<"%VERSION_FILE%"
+
+if "%LOCAL_VERSION%"=="%REMOTE_VERSION%" (
+    echo   Charts are up to date.
+    goto :launch
+)
+
+:: Download and extract
+echo   Downloading custom charts...
+set "ZIP_PATH=%TEMP%\\asphyxia_custom_charts.zip"
+powershell -NoProfile -Command "Invoke-WebRequest -Uri '%SERVER_URL%/api/nautica/download-all' -OutFile '%ZIP_PATH%' -TimeoutSec 120"
+if errorlevel 1 (
+    echo   Download failed, starting game without sync...
+    goto :launch
+)
+
+:: Remove old custom folder only
+set "CUSTOM_DIR=%GAME_ROOT%data_mods\\%MIX_NAME%"
+if exist "%CUSTOM_DIR%" (
+    echo   Removing old custom charts...
+    rmdir /s /q "%CUSTOM_DIR%"
+)
+
+echo   Extracting new charts...
+powershell -NoProfile -Command "Expand-Archive -Path '%ZIP_PATH%' -DestinationPath '%GAME_ROOT%' -Force"
+del /f /q "%ZIP_PATH%" 2>nul
+
+:: Save version
+echo %REMOTE_VERSION%>"%VERSION_FILE%"
+
+:: Count songs
+set "SONG_COUNT=0"
+if exist "%CUSTOM_DIR%\\music" (
+    for /d %%d in ("%CUSTOM_DIR%\\music\\*") do set /a SONG_COUNT+=1
+)
+echo   Synced %SONG_COUNT% custom chart(s).
+
+:launch
+echo.
+if exist "%GAME_ROOT%%GAME_EXE%" (
+    echo Starting game...
+    start "" "%GAME_ROOT%%GAME_EXE%"
+) else (
+    echo Game executable not found: %GAME_EXE%
+    echo Edit GAME_EXE in this script to match your launcher.
+    pause
+)
+`;
+    res.set('Content-Type', 'application/x-batch');
+    res.set('Content-Disposition', 'attachment; filename="sync_and_play.bat"');
+    res.send(script);
+  })
+);
+
+// VoxCharger download — serves the configured VoxCharger.exe
+webui.get(
+  '/api/nautica/voxcharger',
+  wrap(async (req, res) => {
+    const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
+    const voxchargerPath = sdvxConfig.sdvx_voxcharger_path;
+    if (!voxchargerPath || !existsSync(voxchargerPath)) {
+      return res.status(404).json({ error: 'VoxCharger not configured or not found on server' });
+    }
+    res.set('Content-Disposition', 'attachment; filename="VoxCharger.exe"');
+    res.sendFile(path.resolve(voxchargerPath));
+  })
+);
+
+// Nautica custom chart version check (no auth required for sync script)
+webui.get(
+  '/api/nautica/version',
+  wrap(async (req, res) => {
+    const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
+    const gameRoot = sdvxConfig.sdvx_eg_root_dir;
+    const mixName = sdvxConfig.sdvx_custom_mix_name || 'asphyxia_custom';
+    if (!gameRoot) return res.json({ version: null });
+
+    const modBase = path.join(gameRoot, 'data_mods', mixName);
+    if (!existsSync(modBase)) return res.json({ version: null });
+
+    // Build a version hash from the music_db.merged.xml modification time + file list
+    const xmlPath = path.join(modBase, 'others', 'music_db.merged.xml');
+    const musicBase = path.join(modBase, 'music');
+    let hash = '0';
+    try {
+      const xmlStat = existsSync(xmlPath) ? require('fs').statSync(xmlPath) : null;
+      const songFolders = existsSync(musicBase) ? readdirSync(musicBase).sort().join(',') : '';
+      const raw = `${xmlStat ? xmlStat.mtimeMs : 0}|${songFolders}`;
+      // Simple hash
+      let h = 0;
+      for (let i = 0; i < raw.length; i++) {
+        h = ((h << 5) - h + raw.charCodeAt(i)) | 0;
+      }
+      hash = Math.abs(h).toString(36);
+    } catch {}
+
+    res.json({ version: hash, mixName });
+  })
+);
+
+// Nautica custom chart downloads
+webui.get(
+  '/api/nautica/download/:musicId',
+  wrap(async (req, res) => {
+    if (!req.session.user) return res.sendStatus(401);
+    const musicId = parseInt(req.params.musicId);
+    if (isNaN(musicId)) return res.sendStatus(400);
+
+    const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
+    const gameRoot = sdvxConfig.sdvx_eg_root_dir;
+    const mixName = sdvxConfig.sdvx_custom_mix_name || 'asphyxia_custom';
+    if (!gameRoot) return res.status(400).json({ error: 'Game directory not configured' });
+
+    const modBase = path.join(gameRoot, 'data_mods', mixName);
+    const musicBase = path.join(modBase, 'music');
+    if (!existsSync(musicBase)) return res.sendStatus(404);
+
+    const idStr = String(musicId).padStart(4, '0');
+    const dirs = readdirSync(musicBase);
+    const songFolder = dirs.find((d: string) => d.startsWith(idStr + '_'));
+    if (!songFolder) return res.sendStatus(404);
+
+    const archiver = require('archiver');
+    const archive = archiver('zip', { zlib: { level: 5 } });
+    const prefix = `data_mods/${mixName}`;
+
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', `attachment; filename="custom_${idStr}.zip"`);
+    archive.pipe(res);
+
+    // Music folder
+    archive.directory(path.join(musicBase, songFolder), `${prefix}/music/${songFolder}`);
+
+    // Jacket thumbnails
+    const thumbDir = path.join(modBase, 'graphics', 's_jacket00_ifs');
+    if (existsSync(thumbDir)) {
+      const thumbs = readdirSync(thumbDir).filter((f: string) => f.startsWith(`jk_${idStr}_`));
+      for (const t of thumbs) {
+        archive.file(path.join(thumbDir, t), { name: `${prefix}/graphics/s_jacket00_ifs/${t}` });
+      }
+    }
+
+    // music_db.merged.xml
+    const xmlPath = path.join(modBase, 'others', 'music_db.merged.xml');
+    if (existsSync(xmlPath)) {
+      archive.file(xmlPath, { name: `${prefix}/others/music_db.merged.xml` });
+    }
+
+    await archive.finalize();
+  })
+);
+
+webui.get(
+  '/api/nautica/download-all',
+  wrap(async (req, res) => {
+    // No auth required — used by the pre-launch sync script
+    const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
+    const gameRoot = sdvxConfig.sdvx_eg_root_dir;
+    const mixName = sdvxConfig.sdvx_custom_mix_name || 'asphyxia_custom';
+    if (!gameRoot) return res.status(400).json({ error: 'Game directory not configured' });
+
+    const modBase = path.join(gameRoot, 'data_mods', mixName);
+    if (!existsSync(modBase)) return res.sendStatus(404);
+
+    const archiver = require('archiver');
+    const archive = archiver('zip', { zlib: { level: 5 } });
+
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', `attachment; filename="${mixName}.zip"`);
+    archive.pipe(res);
+    archive.directory(modBase, `data_mods/${mixName}`);
+    await archive.finalize();
   })
 );
 

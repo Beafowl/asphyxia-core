@@ -1,5 +1,39 @@
 ## Fork
 
+### Core - Nautica Custom Charts System
+- **CORE**: Added Nautica (ksm.dev) integration for browsing and importing custom KSM charts
+- **CORE**: Added VoxCharger `--full-import` CLI mode for complete chart conversion (KSH → game-ready files)
+- **CORE**: Added custom chart download endpoints (`/api/nautica/download-all`, `/api/nautica/download/:musicId`)
+- **CORE**: Added pre-launch sync script endpoint (`/api/nautica/sync-script`) with auto-filled server URL
+- **CORE**: Added chart version endpoint (`/api/nautica/version`) for sync script change detection
+- **CORE**: Added VoxCharger download endpoint (`/api/nautica/voxcharger`)
+- **CORE**: Added chart nomination system — users can nominate Nautica charts for admin review
+- **CORE**: Added playtesting pipeline with voting and feedback (thumbs up/down + comments)
+- **CORE**: Added staging server mode (`sdvx_nomination_mode` config) for auto-converting charts in testing
+- **CORE**: Custom songs (ID 10000+) are now included in the game's `music_limited` song list with unlocked status
+
+### Core - Security Hardening
+- **CORE**: Fixed XSS vulnerability in Tachi and Flower OAuth callback endpoints
+- **CORE**: Session secret is now randomly generated on first run and persisted (replaced hardcoded secret)
+- **CORE**: Added `httpOnly` flag and fixed `sameSite` on session cookies
+- **CORE**: Added login rate limiting (10 attempts per 15 minutes per IP)
+- **CORE**: Admin-only WebUI events are now enforced server-side in the emit handler
+- **CORE**: Nautica download URL validation restricts to ksm.dev CDN only (SSRF prevention)
+- **CORE**: Authenticated username is now injected server-side (`__username`) to prevent identity spoofing
+- **CORE**: OAuth callbacks now use `window.location.origin` instead of wildcard `*` for postMessage
+- **CORE**: Error handler no longer leaks stack traces to the client
+
+### Core - Flower Import Fixes
+- **CORE**: Fixed Flower import creating score=0 entries for "PLAYED" placeholder scores
+- **CORE**: Fixed Flower API field mapping (`best_score`, `best_clear_type`, `best_score_timestamp`)
+- **CORE**: Added `best_score_timestamp` passthrough for proper score timestamps in `/api/flower/sync`
+
+### Core - UI Improvements
+- **CORE**: Separated inline styles and scripts from all pug templates into external CSS/JS files
+- **CORE**: Added `custom charts admin` page to the admin-only pages list
+- **CORE**: Fixed spacing between API token status text and buttons on account page
+- **CORE**: Fixed "FREE" text missing whitespace on dashboard information card
+
 ### Core - Authentication & Access Control
 - **CORE**: Added user authentication system (signup, login, account management)
 - **CORE**: Added admin role with user management capabilities

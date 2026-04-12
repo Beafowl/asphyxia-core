@@ -52,6 +52,25 @@ ajax.post(
       }
     }
 
+    // Protect admin-only events
+    const ADMIN_ONLY_EVENTS = [
+      'nauticaApprove', 'nauticaRemove', 'nauticaNominationQueue',
+      'nauticaGetFeedback', 'nauticaSetTesting', 'nauticaReject',
+      'manageEvents', 'manageStartupFlags',
+    ];
+    if (ADMIN_ONLY_EVENTS.includes(event)) {
+      if (!req.session.user || !req.session.user.admin) {
+        res.sendStatus(403);
+        return;
+      }
+    }
+
+    // Inject authenticated username so handlers can trust user identity
+    if (req.session.user) {
+      req.body.__username = req.session.user.username;
+      req.body.__isAdmin = req.session.user.admin || false;
+    }
+
     let sent = false;
 
     const send: WebUISend = {
@@ -93,7 +112,7 @@ ajax.post(
     } catch (err) {
       Logger.error(`WebUIEvent Error: ${event}`);
       Logger.error(err, { plugin: plugin.Identifier });
-      res.status(500).send(err);
+      res.status(500).json({ error: 'Internal server error' });
       return;
     }
   }
