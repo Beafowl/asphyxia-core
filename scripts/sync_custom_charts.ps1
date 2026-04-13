@@ -36,7 +36,8 @@ try {
     Write-Host " SKIPPED (server unreachable)" -ForegroundColor Yellow
     Write-Host "Starting game without sync...`n"
     if (Test-Path (Join-Path $GameRoot $GameExe)) {
-        Start-Process -FilePath (Join-Path $GameRoot $GameExe) -ArgumentList $GameArgs -WorkingDirectory $GameRoot
+        if ($GameArgs) { Start-Process -FilePath (Join-Path $GameRoot $GameExe) -ArgumentList $GameArgs -WorkingDirectory $GameRoot }
+        else { Start-Process -FilePath (Join-Path $GameRoot $GameExe) -WorkingDirectory $GameRoot }
     }
     exit
 }
@@ -45,7 +46,8 @@ if (-not $remoteVersion) {
     Write-Host " SKIPPED (no custom charts on server)" -ForegroundColor Yellow
     Write-Host "Starting game...`n"
     if (Test-Path (Join-Path $GameRoot $GameExe)) {
-        Start-Process -FilePath (Join-Path $GameRoot $GameExe) -ArgumentList $GameArgs -WorkingDirectory $GameRoot
+        if ($GameArgs) { Start-Process -FilePath (Join-Path $GameRoot $GameExe) -ArgumentList $GameArgs -WorkingDirectory $GameRoot }
+        else { Start-Process -FilePath (Join-Path $GameRoot $GameExe) -WorkingDirectory $GameRoot }
     }
     exit
 }
@@ -76,7 +78,8 @@ if ($localVersion -eq $remoteVersion) {
         Write-Host "  Download failed: $_" -ForegroundColor Red
         Write-Host "Starting game without sync...`n"
         if (Test-Path (Join-Path $GameRoot $GameExe)) {
-            Start-Process -FilePath (Join-Path $GameRoot $GameExe) -ArgumentList $GameArgs -WorkingDirectory $GameRoot
+            if ($GameArgs) { Start-Process -FilePath (Join-Path $GameRoot $GameExe) -ArgumentList $GameArgs -WorkingDirectory $GameRoot }
+            else { Start-Process -FilePath (Join-Path $GameRoot $GameExe) -WorkingDirectory $GameRoot }
         }
         exit
     }
@@ -114,7 +117,8 @@ Write-Host ""
 $exePath = Join-Path $GameRoot $GameExe
 if (Test-Path $exePath) {
     Write-Host "Starting game..." -ForegroundColor Cyan
-    Start-Process -FilePath $exePath -ArgumentList $GameArgs -WorkingDirectory $GameRoot
+    if ($GameArgs) { Start-Process -FilePath $exePath -ArgumentList $GameArgs -WorkingDirectory $GameRoot }
+    else { Start-Process -FilePath $exePath -WorkingDirectory $GameRoot }
 } else {
     Write-Host "Game executable not found: $exePath" -ForegroundColor Red
     Write-Host "Edit the `$GameExe variable in this script to match your launcher."
