@@ -452,6 +452,84 @@ webui.use(async (req, res, next) => {
   return res.status(401).json({ success: false, description: 'Invalid API token' });
 });
 
+// Nautica endpoints that must be accessible without auth (used by sync script)
+webui.get(
+  '/api/nautica/version',
+  wrap(async (req, res) => {
+    const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
+    const gameRoot = sdvxConfig.sdvx_eg_root_dir;
+    const mixName = sdvxConfig.sdvx_custom_mix_name || 'asphyxia_custom';
+    if (!gameRoot) return res.json({ version: null });
+
+    const modBase = path.join(gameRoot, 'data_mods', mixName);
+    if (!existsSync(modBase)) {
+      require('fs').mkdirSync(modBase, { recursive: true });
+    }
+
+    const xmlPath = path.join(modBase, 'others', 'music_db.merged.xml');
+    const musicBase = path.join(modBase, 'music');
+    let hash = '0';
+    try {
+      const xmlStat = existsSync(xmlPath) ? require('fs').statSync(xmlPath) : null;
+      const songFolders = existsSync(musicBase) ? readdirSync(musicBase).sort().join(',') : '';
+      const raw = `${xmlStat ? xmlStat.mtimeMs : 0}|${songFolders}`;
+      let h = 0;
+      for (let i = 0; i < raw.length; i++) {
+        h = ((h << 5) - h + raw.charCodeAt(i)) | 0;
+      }
+      hash = Math.abs(h).toString(36);
+    } catch {}
+
+    res.json({ version: hash, mixName });
+  })
+);
+
+webui.get(
+  '/api/nautica/download-all',
+  wrap(async (req, res) => {
+    const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
+    const gameRoot = sdvxConfig.sdvx_eg_root_dir;
+    const mixName = sdvxConfig.sdvx_custom_mix_name || 'asphyxia_custom';
+    if (!gameRoot) return res.status(400).json({ error: 'Game directory not configured' });
+
+    const modBase = path.join(gameRoot, 'data_mods', mixName);
+    if (!existsSync(modBase)) return res.sendStatus(404);
+
+    const archiver = require('archiver');
+    const archive = archiver('zip', { zlib: { level: 5 } });
+
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', `attachment; filename="${mixName}.zip"`);
+    archive.pipe(res);
+    archive.directory(modBase, `data_mods/${mixName}`);
+    await archive.finalize();
+  })
+);
+
+webui.get(
+  '/api/nautica/sync-script',
+  wrap(async (req, res) => {
+    const serverUrl = `${req.protocol}://${req.get('host')}`;
+    const templatePath = path.join(PLUGIN_PATH, 'sdvx@asphyxia', 'webui', 'asset', 'sync_custom_charts.ps1');
+    if (!existsSync(templatePath)) return res.status(404).send('Sync script template not found');
+    const script = readFileSync(templatePath, 'utf8')
+      .replace(/\$ServerUrl\s*=\s*"[^"]*"/, `$ServerUrl    = "${serverUrl}"`);
+    res.set('Content-Type', 'application/octet-stream');
+    res.set('Content-Disposition', 'attachment; filename="sync_custom_charts.ps1"');
+    res.send(script);
+  })
+);
+
+webui.get(
+  '/api/nautica/sync-script-bat',
+  wrap(async (req, res) => {
+    const bat = '@echo off\r\npowershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0sync_custom_charts.ps1"\r\n';
+    res.set('Content-Type', 'application/x-batch');
+    res.set('Content-Disposition', 'attachment; filename="sync_and_play.bat"');
+    res.send(bat);
+  })
+);
+
 // Auth middleware - all routes below require login
 webui.use((req, res, next) => {
   if (!req.session.user) {
@@ -3090,152 +3168,6 @@ webui.delete(
   })
 );
 
-// Nautica sync script download — generates a .bat with the server URL baked in
-webui.get(
-  '/api/nautica/sync-script',
-  wrap(async (req, res) => {
-    const serverUrl = `${req.protocol}://${req.get('host')}`;
-    const script = `@echo off
-chcp 65001 >nul
-title Asphyxia Custom Charts Sync
-echo ============================================
-echo   Asphyxia Custom Charts Sync
-echo ============================================
-echo.
-
-set "SERVER_URL=${serverUrl}"
-set "GAME_ROOT=%~dp0"
-set "GAME_EXE=spice64.exe"
-set "VERSION_FILE=%GAME_ROOT%.asphyxia_custom_version"
-
-echo Server:    %SERVER_URL%
-echo Game Root: %GAME_ROOT%
-echo.
-
-:: Check for updates
-echo Checking for chart updates...
-set "REMOTE_VERSION="
-set "MIX_NAME="
-for /f "tokens=*" %%i in ('powershell -NoProfile -Command "try { $r = Invoke-RestMethod -Uri '%SERVER_URL%/api/nautica/version' -TimeoutSec 5; Write-Output $r.version; Write-Output $r.mixName } catch { Write-Output 'ERROR' }"') do (
-    if not defined REMOTE_VERSION (
-        set "REMOTE_VERSION=%%i"
-    ) else (
-        set "MIX_NAME=%%i"
-    )
-)
-
-if "%REMOTE_VERSION%"=="ERROR" (
-    echo   Server unreachable, starting game without sync...
-    goto :launch
-)
-if "%REMOTE_VERSION%"=="" (
-    echo   No custom charts on server, starting game...
-    goto :launch
-)
-if not defined MIX_NAME set "MIX_NAME=asphyxia_custom"
-
-:: Compare versions
-set "LOCAL_VERSION="
-if exist "%VERSION_FILE%" set /p LOCAL_VERSION=<"%VERSION_FILE%"
-
-if "%LOCAL_VERSION%"=="%REMOTE_VERSION%" (
-    echo   Charts are up to date.
-    goto :launch
-)
-
-:: Download and extract
-echo   Downloading custom charts...
-set "ZIP_PATH=%TEMP%\\asphyxia_custom_charts.zip"
-powershell -NoProfile -Command "Invoke-WebRequest -Uri '%SERVER_URL%/api/nautica/download-all' -OutFile '%ZIP_PATH%' -TimeoutSec 120"
-if errorlevel 1 (
-    echo   Download failed, starting game without sync...
-    goto :launch
-)
-
-:: Remove old custom folder only
-set "CUSTOM_DIR=%GAME_ROOT%data_mods\\%MIX_NAME%"
-if exist "%CUSTOM_DIR%" (
-    echo   Removing old custom charts...
-    rmdir /s /q "%CUSTOM_DIR%"
-)
-
-echo   Extracting new charts...
-powershell -NoProfile -Command "Expand-Archive -Path '%ZIP_PATH%' -DestinationPath '%GAME_ROOT%' -Force"
-del /f /q "%ZIP_PATH%" 2>nul
-
-:: Save version
-echo %REMOTE_VERSION%>"%VERSION_FILE%"
-
-:: Count songs
-set "SONG_COUNT=0"
-if exist "%CUSTOM_DIR%\\music" (
-    for /d %%d in ("%CUSTOM_DIR%\\music\\*") do set /a SONG_COUNT+=1
-)
-echo   Synced %SONG_COUNT% custom chart(s).
-
-:launch
-echo.
-if exist "%GAME_ROOT%%GAME_EXE%" (
-    echo Starting game...
-    start "" "%GAME_ROOT%%GAME_EXE%"
-) else (
-    echo Game executable not found: %GAME_EXE%
-    echo Edit GAME_EXE in this script to match your launcher.
-    pause
-)
-`;
-    res.set('Content-Type', 'application/x-batch');
-    res.set('Content-Disposition', 'attachment; filename="sync_and_play.bat"');
-    res.send(script);
-  })
-);
-
-// VoxCharger download — serves the configured VoxCharger.exe
-webui.get(
-  '/api/nautica/voxcharger',
-  wrap(async (req, res) => {
-    const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
-    const voxchargerPath = sdvxConfig.sdvx_voxcharger_path;
-    if (!voxchargerPath || !existsSync(voxchargerPath)) {
-      return res.status(404).json({ error: 'VoxCharger not configured or not found on server' });
-    }
-    res.set('Content-Disposition', 'attachment; filename="VoxCharger.exe"');
-    res.sendFile(path.resolve(voxchargerPath));
-  })
-);
-
-// Nautica custom chart version check (no auth required for sync script)
-webui.get(
-  '/api/nautica/version',
-  wrap(async (req, res) => {
-    const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
-    const gameRoot = sdvxConfig.sdvx_eg_root_dir;
-    const mixName = sdvxConfig.sdvx_custom_mix_name || 'asphyxia_custom';
-    if (!gameRoot) return res.json({ version: null });
-
-    const modBase = path.join(gameRoot, 'data_mods', mixName);
-    if (!existsSync(modBase)) return res.json({ version: null });
-
-    // Build a version hash from the music_db.merged.xml modification time + file list
-    const xmlPath = path.join(modBase, 'others', 'music_db.merged.xml');
-    const musicBase = path.join(modBase, 'music');
-    let hash = '0';
-    try {
-      const xmlStat = existsSync(xmlPath) ? require('fs').statSync(xmlPath) : null;
-      const songFolders = existsSync(musicBase) ? readdirSync(musicBase).sort().join(',') : '';
-      const raw = `${xmlStat ? xmlStat.mtimeMs : 0}|${songFolders}`;
-      // Simple hash
-      let h = 0;
-      for (let i = 0; i < raw.length; i++) {
-        h = ((h << 5) - h + raw.charCodeAt(i)) | 0;
-      }
-      hash = Math.abs(h).toString(36);
-    } catch {}
-
-    res.json({ version: hash, mixName });
-  })
-);
-
 // Nautica custom chart downloads
 webui.get(
   '/api/nautica/download/:musicId',
@@ -3284,29 +3216,6 @@ webui.get(
       archive.file(xmlPath, { name: `${prefix}/others/music_db.merged.xml` });
     }
 
-    await archive.finalize();
-  })
-);
-
-webui.get(
-  '/api/nautica/download-all',
-  wrap(async (req, res) => {
-    // No auth required — used by the pre-launch sync script
-    const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
-    const gameRoot = sdvxConfig.sdvx_eg_root_dir;
-    const mixName = sdvxConfig.sdvx_custom_mix_name || 'asphyxia_custom';
-    if (!gameRoot) return res.status(400).json({ error: 'Game directory not configured' });
-
-    const modBase = path.join(gameRoot, 'data_mods', mixName);
-    if (!existsSync(modBase)) return res.sendStatus(404);
-
-    const archiver = require('archiver');
-    const archive = archiver('zip', { zlib: { level: 5 } });
-
-    res.set('Content-Type', 'application/zip');
-    res.set('Content-Disposition', `attachment; filename="${mixName}.zip"`);
-    archive.pipe(res);
-    archive.directory(modBase, `data_mods/${mixName}`);
     await archive.finalize();
   })
 );
