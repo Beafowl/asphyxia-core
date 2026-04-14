@@ -493,7 +493,10 @@ webui.get(
     if (!gameRoot) return res.status(400).json({ error: 'Game directory not configured' });
 
     const modBase = path.join(gameRoot, 'data_mods', mixName);
-    if (!existsSync(modBase)) return res.sendStatus(404);
+    const musicBase = path.join(modBase, 'music');
+    if (!existsSync(musicBase) || readdirSync(musicBase).length === 0) {
+      return res.status(404).json({ error: 'No custom charts available' });
+    }
 
     const archiver = require('archiver');
     const archive = archiver('zip', { zlib: { level: 5 } });
