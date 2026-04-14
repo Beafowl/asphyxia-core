@@ -2,7 +2,7 @@
 
 ### Core - Nautica Custom Charts System
 - **CORE**: Added Nautica (ksm.dev) integration for browsing and importing custom KSM charts
-- **CORE**: Added VoxCharger `--full-import` CLI mode for complete chart conversion (KSH → game-ready files)
+- **CORE**: Added VoxCharger `--full-import` and `--bulk-import` CLI modes for complete chart conversion (KSH → game-ready files)
 - **CORE**: Added custom chart download endpoints (`/api/nautica/download-all`, `/api/nautica/download/:musicId`)
 - **CORE**: Added pre-launch sync script endpoint (`/api/nautica/sync-script`) with auto-filled server URL
 - **CORE**: Added chart version endpoint (`/api/nautica/version`) for sync script change detection
@@ -10,7 +10,11 @@
 - **CORE**: Added chart nomination system — users can nominate Nautica charts for admin review
 - **CORE**: Added playtesting pipeline with voting and feedback (thumbs up/down + comments)
 - **CORE**: Added staging server mode (`sdvx_nomination_mode` config) for auto-converting charts in testing
-- **CORE**: Custom songs (ID 10000+) are now included in the game's `music_limited` song list with unlocked status
+- **CORE**: Custom songs (ID 2800+) are now included in the game's `music_limited` song list with unlocked status
+- **CORE**: Added sync bundle endpoint (`/api/nautica/sync-bundle`) — single ZIP with sync script + launcher
+- **CORE**: Download-all endpoint returns 404 when no custom charts exist
+- **CORE**: Added "How to Play Custom Charts" setup guide page
+- **CORE**: Discovered game music ID limit: IDs >= 3072 crash soundvoltex.dll (internal array overflow)
 
 ### Core - Security Hardening
 - **CORE**: Fixed XSS vulnerability in Tachi and Flower OAuth callback endpoints

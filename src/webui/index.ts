@@ -533,6 +533,29 @@ webui.get(
   })
 );
 
+webui.get(
+  '/api/nautica/sync-bundle',
+  wrap(async (req, res) => {
+    const serverUrl = `${req.protocol}://${req.get('host')}`;
+    const templatePath = path.join(PLUGIN_PATH, 'sdvx@asphyxia', 'webui', 'asset', 'sync_custom_charts.ps1');
+    if (!existsSync(templatePath)) return res.status(404).send('Sync script template not found');
+
+    const ps1 = readFileSync(templatePath, 'utf8')
+      .replace(/\$ServerUrl\s*=\s*"[^"]*"/, `$ServerUrl    = "${serverUrl}"`);
+    const bat = '@echo off\r\npowershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0sync_custom_charts.ps1"\r\n';
+
+    const archiver = require('archiver');
+    const archive = archiver('zip', { zlib: { level: 5 } });
+
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', 'attachment; filename="custom_charts_sync.zip"');
+    archive.pipe(res);
+    archive.append(ps1, { name: 'sync_custom_charts.ps1' });
+    archive.append(bat, { name: 'sync_and_play.bat' });
+    await archive.finalize();
+  })
+);
+
 // Auth middleware - all routes below require login
 webui.use((req, res, next) => {
   if (!req.session.user) {
