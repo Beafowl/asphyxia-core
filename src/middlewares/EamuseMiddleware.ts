@@ -156,6 +156,43 @@ export const EamuseMiddleware: RequestHandler = async (req, res, next) => {
   });
 };
 
+// =========================================
+//       Request timing + aggregate stats
+// =========================================
+// Per-request: requests slower than SLOW_REQUEST_MS are logged as warn so they
+// stand out in the console. Every SUMMARY_INTERVAL_MS, a summary of the top
+// endpoints by total time is logged so you can see what gets hit the most
+// without having to aggregate logs externally.
+
+interface MethodStats {
+  count: number;
+  totalMs: number;
+  maxMs: number;
+}
+const methodStats = new Map<string, MethodStats>();
+
+const SLOW_REQUEST_MS = 200;
+const SUMMARY_INTERVAL_MS = 5 * 60 * 1000;
+const SUMMARY_TOP_N = 10;
+
+const summaryTimer = setInterval(() => {
+  if (methodStats.size === 0) return;
+  const rows = Array.from(methodStats.entries())
+    .map(([key, s]) => ({ key, ...s, avgMs: s.totalMs / s.count }))
+    .sort((a, b) => b.totalMs - a.totalMs)
+    .slice(0, SUMMARY_TOP_N);
+  const totalCalls = Array.from(methodStats.values()).reduce((acc, s) => acc + s.count, 0);
+  const lines = rows.map(
+    r =>
+      `  ${r.key}: ${r.count} calls, ${r.totalMs.toFixed(0)}ms total, avg ${r.avgMs.toFixed(1)}ms, max ${r.maxMs.toFixed(0)}ms`
+  );
+  Logger.info(
+    `Eamuse traffic summary (last ${SUMMARY_INTERVAL_MS / 60000}min, ${totalCalls} calls, top ${rows.length} by total time):\n${lines.join('\n')}`
+  );
+  methodStats.clear();
+}, SUMMARY_INTERVAL_MS);
+summaryTimer.unref();
+
 export const EamuseRoute = (router: EamuseRootRouter): RequestHandler => {
   const route: RequestHandler = async (req, res, next) => {
     if ((req as any).skip) {
@@ -181,11 +218,23 @@ export const EamuseRoute = (router: EamuseRootRouter): RequestHandler => {
       (info as any).host = req.hostname;
     }
 
+    const startedAt = Date.now();
     try {
       await router.run(gameCode, body.module, body.method, info, data, send);
     } catch (err) {
       Logger.error(err);
       send.object({}, { status: 1 });
+    } finally {
+      const elapsed = Date.now() - startedAt;
+      const key = `${gameCode}.${body.module}.${body.method}`;
+      const stats = methodStats.get(key) || { count: 0, totalMs: 0, maxMs: 0 };
+      stats.count++;
+      stats.totalMs += elapsed;
+      if (elapsed > stats.maxMs) stats.maxMs = elapsed;
+      methodStats.set(key, stats);
+      if (elapsed >= SLOW_REQUEST_MS) {
+        Logger.warn(`Slow eamuse request: ${key} took ${elapsed}ms`);
+      }
     }
   };
 

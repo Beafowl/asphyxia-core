@@ -99,6 +99,10 @@ const ADMIN_ONLY_PAGES = [
   'custom charts admin',
 ];
 
+const HIDDEN_NAV_PAGES = [
+  'custom charts setup',
+];
+
 declare module 'express-session' {
   interface SessionData {
     user?: { username: string; cardNumber: string; admin: boolean };
@@ -481,6 +485,118 @@ webui.get(
     } catch {}
 
     res.json({ version: hash, mixName });
+  })
+);
+
+webui.get(
+  '/api/nautica/manifest',
+  wrap(async (req, res) => {
+    const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
+    const mixName = sdvxConfig.sdvx_custom_mix_name || 'asphyxia_custom';
+
+    const sdvxPlugin = { identifier: 'sdvx@asphyxia', core: false };
+    const songs = (await APIFind(sdvxPlugin, { collection: 'nautica_song' })) as any[];
+    const ready = (songs || []).filter(s => s.status === 'ready');
+
+    const charts = ready.map(s => ({
+      mid: s.mid,
+      nauticaId: s.nauticaId,
+      title: s.title,
+      artist: s.artist,
+      convertedAt: s.convertedAt || 0,
+      driveFileId: s.driveFileId || null,
+      size: s.driveFileSize || 0,
+      downloadUrl: s.driveFileId
+        ? `https://drive.google.com/uc?export=download&id=${encodeURIComponent(s.driveFileId)}`
+        : null,
+    }));
+
+    res.json({ mixName, charts });
+  })
+);
+
+webui.get(
+  '/api/drive-oauth-start',
+  wrap(async (req, res) => {
+    if (!req.session.user?.admin) return res.sendStatus(403);
+
+    const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
+    const clientId = (sdvxConfig.sdvx_drive_oauth_client_id || '').trim();
+    const clientSecret = (sdvxConfig.sdvx_drive_oauth_client_secret || '').trim();
+    if (!clientId || !clientSecret) {
+      return res.status(400).send('Drive OAuth Client ID and Client Secret must be set in plugin settings first.');
+    }
+
+    const redirectUri = `${req.protocol}://${req.get('host')}/api/drive-oauth-callback`;
+    const { OAuth2Client } = require('google-auth-library');
+    const oauth = new OAuth2Client(clientId, clientSecret, redirectUri);
+    const url = oauth.generateAuthUrl({
+      access_type: 'offline',
+      prompt: 'consent',
+      scope: ['https://www.googleapis.com/auth/drive'],
+    });
+    res.redirect(url);
+  })
+);
+
+webui.get(
+  '/api/drive-oauth-callback',
+  wrap(async (req, res) => {
+    if (!req.session.user?.admin) return res.status(403).send('Admin session required.');
+
+    const code = req.query.code;
+    const error = req.query.error;
+    if (error) return res.status(400).send(`Google returned an error: ${error}`);
+    if (!code || typeof code !== 'string') return res.status(400).send('Missing authorization code.');
+
+    const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
+    const clientId = (sdvxConfig.sdvx_drive_oauth_client_id || '').trim();
+    const clientSecret = (sdvxConfig.sdvx_drive_oauth_client_secret || '').trim();
+    if (!clientId || !clientSecret) return res.status(400).send('Drive OAuth client not configured.');
+
+    const redirectUri = `${req.protocol}://${req.get('host')}/api/drive-oauth-callback`;
+    const { OAuth2Client } = require('google-auth-library');
+    const oauth = new OAuth2Client(clientId, clientSecret, redirectUri);
+
+    try {
+      const { tokens } = await oauth.getToken(code);
+      if (!tokens.refresh_token) {
+        return res.status(500).send(
+          'Google did not return a refresh token. Revoke the app at https://myaccount.google.com/permissions and try again.'
+        );
+      }
+      const section = CONFIG['sdvx@asphyxia'] || {};
+      section.sdvx_drive_oauth_refresh_token = tokens.refresh_token;
+      CONFIG['sdvx@asphyxia'] = section;
+      SaveConfig();
+
+      res.send(
+        `<html><body style="font-family:sans-serif;padding:2rem;background:#1a1a1e;color:#ddd">
+          <h2 style="color:#7cb">Google Drive authorized</h2>
+          <p>Refresh token saved. You can close this window and return to the admin page.</p>
+          <script>setTimeout(function(){window.close();},2000);</script>
+        </body></html>`
+      );
+    } catch (err: any) {
+      res.status(500).send(`OAuth exchange failed: ${err.message || err}`);
+    }
+  })
+);
+
+webui.get(
+  '/api/nautica/music-db-xml',
+  wrap(async (req, res) => {
+    const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
+    const gameRoot = sdvxConfig.sdvx_eg_root_dir;
+    const mixName = sdvxConfig.sdvx_custom_mix_name || 'asphyxia_custom';
+    if (!gameRoot) return res.status(400).json({ error: 'Game directory not configured' });
+
+    const xmlPath = path.join(gameRoot, 'data_mods', mixName, 'others', 'music_db.merged.xml');
+    if (!existsSync(xmlPath)) return res.sendStatus(404);
+
+    res.set('Content-Type', 'application/xml');
+    res.set('Content-Disposition', `attachment; filename="music_db.merged.xml"`);
+    res.sendFile(xmlPath);
   })
 );
 
@@ -2787,7 +2903,7 @@ function data(req: Request, title: string, plugin: string, attr?: any) {
         name: p.Name,
         id: p.Identifier,
         webOnly: p.GameCodes.length == 0,
-        pages: p.Pages.filter(f => req.session.user?.admin || !ADMIN_ONLY_PAGES.includes(f)).map(
+        pages: p.Pages.filter(f => !HIDDEN_NAV_PAGES.includes(f) && (req.session.user?.admin || !ADMIN_ONLY_PAGES.includes(f))).map(
           f => ({ name: startCase(f), link: f })
         ),
       };
@@ -3201,6 +3317,12 @@ webui.get(
     if (!req.session.user) return res.sendStatus(401);
     const musicId = parseInt(req.params.musicId);
     if (isNaN(musicId)) return res.sendStatus(400);
+
+    const sdvxPlugin = { identifier: 'sdvx@asphyxia', core: false };
+    const song: any = await APIFindOne(sdvxPlugin, { collection: 'nautica_song', mid: musicId });
+    if (song && song.driveFileId) {
+      return res.redirect(302, `https://drive.google.com/uc?export=download&id=${encodeURIComponent(song.driveFileId)}`);
+    }
 
     const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
     const gameRoot = sdvxConfig.sdvx_eg_root_dir;

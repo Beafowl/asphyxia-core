@@ -73,7 +73,9 @@ if ($localVersion -eq $remoteVersion) {
     Write-Host "Downloading custom charts..."
 
     try {
+        $ProgressPreference = 'SilentlyContinue'
         Invoke-WebRequest -Uri "$ServerUrl/api/nautica/download-all" -OutFile $zipPath -TimeoutSec 120
+        $ProgressPreference = 'Continue'
     } catch {
         Write-Host "  Download failed: $_" -ForegroundColor Red
         Write-Host "Starting game without sync...`n"

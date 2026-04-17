@@ -95,7 +95,69 @@ export const LoadCoreDB = async () => {
   if (!CoreDB) {
     process.exit(1);
   }
+
+  try {
+    await CoreDB.ensureIndexAsync({ fieldName: 'cid' });
+    await CoreDB.ensureIndexAsync({ fieldName: 'username' });
+  } catch (err) {
+    Logger.error(err);
+  }
 };
+
+// =========================================
+//        Hot-path TTL cache for cards/profiles
+// =========================================
+// NeDB indexes already make these lookups O(log n), but games call inquire/load
+// on every boot, so a short TTL cache collapses the per-boot flurry into a
+// single hit. Negative results (null) are cached too so missing cards don't
+// re-query on each retry. Invalidated on every write path below.
+
+const CACHE_TTL_MS = 30_000;
+const CACHE_MAX_ENTRIES = 10_000;
+
+interface CacheEntry<T> {
+  value: T;
+  expiresAt: number;
+}
+const cardCache = new Map<string, CacheEntry<any>>();
+const profileCache = new Map<string, CacheEntry<any>>();
+
+function cacheGet<T>(cache: Map<string, CacheEntry<T>>, key: string): { hit: boolean; value?: T } {
+  const entry = cache.get(key);
+  if (!entry) return { hit: false };
+  if (entry.expiresAt < Date.now()) {
+    cache.delete(key);
+    return { hit: false };
+  }
+  return { hit: true, value: entry.value };
+}
+
+function cacheSet<T>(cache: Map<string, CacheEntry<T>>, key: string, value: T) {
+  if (cache.size >= CACHE_MAX_ENTRIES) {
+    const evict = cache.size - Math.floor(CACHE_MAX_ENTRIES * 0.9);
+    const it = cache.keys();
+    for (let i = 0; i < evict; i++) {
+      const k = it.next().value;
+      if (k === undefined) break;
+      cache.delete(k);
+    }
+  }
+  cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+}
+
+function invalidateCard(cid: string) {
+  cardCache.delete(cid);
+}
+
+function invalidateProfile(refid: string) {
+  profileCache.delete(refid);
+}
+
+function invalidateCardsByRefid(refid: string) {
+  for (const [cid, entry] of cardCache) {
+    if (entry.value && entry.value.__refid === refid) cardCache.delete(cid);
+  }
+}
 
 const DBInstances: { [key: string]: nedb } = {};
 
@@ -334,8 +396,12 @@ export async function GetProfileCount() {
 }
 
 export async function FindCard(cid: string) {
+  const cached = cacheGet(cardCache, cid);
+  if (cached.hit) return cached.value;
   try {
-    return await CoreDB.findOneAsync<any>({ __s: 'card', cid });
+    const result = await CoreDB.findOneAsync<any>({ __s: 'card', cid });
+    cacheSet(cardCache, cid, result);
+    return result;
   } catch (err) {
     Logger.error(err);
     return false;
@@ -367,7 +433,9 @@ export async function CreateCard(cid: string, refid: string, forcePrint?: string
   }
 
   try {
-    return await CoreDB.insertAsync<any>({ __s: 'card', __refid: refid, print, cid });
+    const result = await CoreDB.insertAsync<any>({ __s: 'card', __refid: refid, print, cid });
+    invalidateCard(cid);
+    return result;
   } catch (err) {
     Logger.error(err);
     return false;
@@ -377,6 +445,7 @@ export async function CreateCard(cid: string, refid: string, forcePrint?: string
 export async function DeleteCard(cid: string) {
   try {
     await CoreDB.removeAsync({ __s: 'card', cid }, { multi: true });
+    invalidateCard(cid);
     return true;
   } catch (err) {
     Logger.error(err);
@@ -385,11 +454,15 @@ export async function DeleteCard(cid: string) {
 }
 
 export async function FindProfile(refid: string) {
+  const cached = cacheGet(profileCache, refid);
+  if (cached.hit) return cached.value;
   try {
-    return await CoreDB.findOneAsync<any>({
+    const result = await CoreDB.findOneAsync<any>({
       __s: 'profile',
       __refid: refid,
     });
+    cacheSet(profileCache, refid, result);
+    return result;
   } catch (err) {
     Logger.error(err);
     return false;
@@ -406,13 +479,15 @@ export async function CreateProfile(pin: string, gameCode: string) {
   const name = NAMES[Math.floor(Math.random() * NAMES.length)];
 
   try {
-    return await CoreDB.insertAsync({
+    const result = await CoreDB.insertAsync({
       __s: 'profile',
       __refid: refid,
       pin,
       name,
       models: [gameCode],
     });
+    invalidateProfile(refid);
+    return result;
   } catch (err) {
     Logger.error(err);
     return false;
@@ -431,6 +506,7 @@ export async function UpdateProfile(refid: string, update: any, upsert: boolean 
       },
       { upsert }
     );
+    invalidateProfile(refid);
     return true;
   } catch (err) {
     Logger.error(err);
@@ -441,6 +517,8 @@ export async function UpdateProfile(refid: string, update: any, upsert: boolean 
 export async function PurgeProfile(refid: string) {
   try {
     await CoreDB.removeAsync({ __refid: refid }, { multi: true });
+    invalidateProfile(refid);
+    invalidateCardsByRefid(refid);
   } catch (err) {
     Logger.error(err);
     return false;
@@ -469,13 +547,15 @@ export async function PurgeProfile(refid: string) {
 
 export async function BindProfile(refid: string, gameCode: string) {
   try {
-    return await CoreDB.updateAsync(
+    const result = await CoreDB.updateAsync(
       {
         __s: 'profile',
         __refid: refid,
       },
       { $addToSet: { models: gameCode } }
     );
+    invalidateProfile(refid);
+    return result;
   } catch (err) {
     Logger.error(err);
     return false;
