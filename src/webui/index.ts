@@ -528,14 +528,15 @@ webui.get(
     }
 
     const redirectUri = `${req.protocol}://${req.get('host')}/api/drive-oauth-callback`;
-    const { OAuth2Client } = require('google-auth-library');
-    const oauth = new OAuth2Client(clientId, clientSecret, redirectUri);
-    const url = oauth.generateAuthUrl({
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'https://www.googleapis.com/auth/drive',
       access_type: 'offline',
       prompt: 'consent',
-      scope: ['https://www.googleapis.com/auth/drive'],
     });
-    res.redirect(url);
+    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
   })
 );
 
@@ -555,12 +556,10 @@ webui.get(
     if (!clientId || !clientSecret) return res.status(400).send('Drive OAuth client not configured.');
 
     const redirectUri = `${req.protocol}://${req.get('host')}/api/drive-oauth-callback`;
-    const { OAuth2Client } = require('google-auth-library');
-    const oauth = new OAuth2Client(clientId, clientSecret, redirectUri);
 
     try {
-      const { tokens } = await oauth.getToken(code);
-      if (!tokens.refresh_token) {
+      const tokens = await exchangeAuthCodeForTokens(code, clientId, clientSecret, redirectUri);
+      if (!tokens || !tokens.refresh_token) {
         return res.status(500).send(
           'Google did not return a refresh token. Revoke the app at https://myaccount.google.com/permissions and try again.'
         );
@@ -582,6 +581,50 @@ webui.get(
     }
   })
 );
+
+function exchangeAuthCodeForTokens(
+  code: string,
+  clientId: string,
+  clientSecret: string,
+  redirectUri: string
+): Promise<{ access_token?: string; refresh_token?: string; expires_in?: number } | null> {
+  return new Promise((resolve, reject) => {
+    const body = new URLSearchParams({
+      code,
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+      grant_type: 'authorization_code',
+    }).toString();
+
+    const https = require('https');
+    const req = https.request(
+      {
+        method: 'POST',
+        hostname: 'oauth2.googleapis.com',
+        path: '/token',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(body),
+        },
+      },
+      (res: any) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          if (res.statusCode !== 200) {
+            return reject(new Error(`token endpoint returned HTTP ${res.statusCode}: ${text}`));
+          }
+          try { resolve(JSON.parse(text)); } catch { resolve(null); }
+        });
+      }
+    );
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
 
 webui.get(
   '/api/nautica/music-db-xml',
