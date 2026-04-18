@@ -7,7 +7,7 @@
     "node": ">=16"
   },
   "scripts": {
-    "dev": "tsc && cd dist && node AsphyxiaCore.js",
+    "dev": "tsc && cd dist && node AsphyxiaCore.js --dev",
     "build": "tsc"
   },
   "dependencies": {

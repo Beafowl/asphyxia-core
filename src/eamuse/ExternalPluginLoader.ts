@@ -107,10 +107,15 @@ export function LoadExternalPlugins() {
       project: tsconfig,
       typeCheck: false,
       files: false,
-      transpileOnly: ARGS.dev ? false : true,
+      // Always transpile-only. The pinned TypeScript (4.2.x) and ts-node
+      // (9.1.x) signatures drifted enough that type-check mode throws
+      // "Non-string value passed to ts.resolveTypeReferenceDirective" on
+      // newer node runtimes. Dev mode only needs plugin console output
+      // un-silenced (see further below), not full type checking at load.
+      transpileOnly: true,
     });
   } else {
-    ts_node.register({ typeCheck: false, files: false, transpileOnly: ARGS.dev ? false : true });
+    ts_node.register({ typeCheck: false, files: false, transpileOnly: true });
   }
 
   $.$ = (data: any) => {
@@ -244,31 +249,30 @@ export function LoadExternalPlugins() {
     $.R.WebUIEvent = () => {};
   }
 
-  if (!ARGS.dev) {
-    $.console.log = () => {};
-    $.console.warn = () => {};
-    $.console.debug = () => {};
-    $.console.info = () => {};
-  } else {
-    $.console.log = (...msgs: any[]) => {
-      const plugin = GetCallerPlugin();
-      if (plugin) {
-        Logger.info(msgs.join(' '), { plugin: plugin });
-      } else {
-        Logger.info(msgs.join(' '), { plugin: 'unknown' });
-      }
-    };
-    $.console.debug = $.console.log;
-    $.console.info = $.console.log;
-    $.console.warn = (...msgs: any[]) => {
-      const plugin = GetCallerPlugin();
-      if (plugin) {
-        Logger.warn(msgs.join(' '), { plugin: plugin });
-      } else {
-        Logger.warn(msgs.join(' '), { plugin: 'unknown' });
-      }
-    };
-  }
+  // Route plugin console output through Winston unconditionally. The old
+  // behavior silenced console.log/info/debug/warn unless the process was
+  // started with --dev, which hid every "[Nautica] Downloading..." / "[Nautica]
+  // Bulk reconvert starting..." progress line on normal runs and made the
+  // server look frozen during conversions. console.error was already
+  // always-on; these three just match it.
+  $.console.log = (...msgs: any[]) => {
+    const plugin = GetCallerPlugin();
+    if (plugin) {
+      Logger.info(msgs.join(' '), { plugin: plugin });
+    } else {
+      Logger.info(msgs.join(' '), { plugin: 'unknown' });
+    }
+  };
+  $.console.debug = $.console.log;
+  $.console.info  = $.console.log;
+  $.console.warn = (...msgs: any[]) => {
+    const plugin = GetCallerPlugin();
+    if (plugin) {
+      Logger.warn(msgs.join(' '), { plugin: plugin });
+    } else {
+      Logger.warn(msgs.join(' '), { plugin: 'unknown' });
+    }
+  };
 
   $.console.error = (...msgs: any[]) => {
     const plugin = GetCallerPlugin();
