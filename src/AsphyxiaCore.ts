@@ -6,6 +6,7 @@ import { services } from './eamuse';
 import { VERSION } from './utils/Consts';
 import { pad } from 'lodash';
 import express from 'express';
+import compression from 'compression';
 import chalk from 'chalk';
 import { LoadExternalPlugins } from './eamuse/ExternalPluginLoader';
 import { webui } from './webui/index';
@@ -54,6 +55,21 @@ function Main() {
   EAMUSE.disable('etag');
   EAMUSE.disable('x-powered-by');
 
+  // gzip-compress responses larger than the default 1 KB threshold. Eamuse
+  // XML payloads (game.sv7_hiscore, game.sv7_common) are verbose text and
+  // compress to 10-30% of their original size; the big savings are on the
+  // wire and on client parse time, at a small CPU cost on the server.
+  // Binary KBin payloads (header x-compress: lz77) are already encoded by
+  // the client and skip this filter.
+  EAMUSE.use(compression({
+    filter: (req, res) => {
+      const type = String(res.getHeader('Content-Type') || '');
+      // Don't double-compress KBin — the game side handles lz77 itself.
+      if (req.headers['x-compress'] === 'lz77') return false;
+      return compression.filter(req, res) || /xml|json|text|javascript/.test(type);
+    },
+  }));
+
   if (ARGS.dev) {
     Logger.info(` [Developer Mode] Console Output Enabled`);
     Logger.info(``);
@@ -79,6 +95,16 @@ function Main() {
 
   // ========== LISTEN ============
   const server = EAMUSE.listen(CONFIG.port, CONFIG.bind, () => {
+    // Hold keep-alive connections open longer than Node's 5s default.
+    // Arcade cabinets and the WebUI both do bursty request patterns where
+    // a single session makes many requests in a row; a 5s idle close forces
+    // a TCP + possibly TLS handshake on every eamuse call, which is pure
+    // latency on every request. 65s is a well-known "safely longer than
+    // typical load-balancer timeouts" value.
+    (server as any).keepAliveTimeout = 65_000;
+    // headersTimeout must be larger than keepAliveTimeout or Node will
+    // close the socket while the client is still sending headers.
+    (server as any).headersTimeout    = 66_000;
     const cleaned = cleanIP(CONFIG.bind);
     const isV6 = isIPv6(cleaned);
     const printAddr = isV6 ? `[${cleaned}]` : cleaned;
