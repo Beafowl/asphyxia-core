@@ -57,6 +57,7 @@ ajax.post(
       'nauticaApprove', 'nauticaRemove', 'nauticaNominationQueue',
       'nauticaGetFeedback', 'nauticaSetTesting', 'nauticaReject',
       'nauticaDeletedList', 'nauticaReconvert', 'nauticaReconvertAll',
+      'nauticaExportList', 'nauticaImportList',
       'manageEvents', 'manageStartupFlags',
     ];
     if (ADMIN_ONLY_EVENTS.includes(event)) {
