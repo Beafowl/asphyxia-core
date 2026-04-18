@@ -56,7 +56,7 @@ ajax.post(
     const ADMIN_ONLY_EVENTS = [
       'nauticaApprove', 'nauticaRemove', 'nauticaNominationQueue',
       'nauticaGetFeedback', 'nauticaSetTesting', 'nauticaReject',
-      'nauticaDeletedList', 'nauticaReconvertAll',
+      'nauticaDeletedList', 'nauticaReconvert', 'nauticaReconvertAll',
       'manageEvents', 'manageStartupFlags',
     ];
     if (ADMIN_ONLY_EVENTS.includes(event)) {
