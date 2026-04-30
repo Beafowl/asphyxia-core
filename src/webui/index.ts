@@ -758,6 +758,36 @@ webui.get(
   })
 );
 
+// VoxCharger binary distribution. Serves whatever VoxCharger.exe is sitting
+// in dist/ alongside the asphyxia binary, so server admins setting up a new
+// host can grab the same converter version this server is built against
+// without hunting for a release. Logged-in only — the binary is small but
+// no reason to expose it anonymously.
+webui.get(
+  '/api/voxcharger/download',
+  wrap(async (req, res) => {
+    const candidates = [
+      path.resolve(process.cwd(), 'VoxCharger.exe'),
+      path.resolve(process.cwd(), '..', 'VoxCharger.exe'),
+      path.resolve(__dirname, '..', '..', 'VoxCharger.exe'),
+    ];
+    const exePath = candidates.find(p => existsSync(p));
+    if (!exePath) {
+      return res
+        .status(404)
+        .type('text/plain')
+        .send(
+          'VoxCharger.exe not found alongside the server binary. Place ' +
+          'VoxCharger.exe next to the asphyxia executable (or in this ' +
+          'server\'s working directory) and retry.'
+        );
+    }
+    res.set('Content-Type', 'application/octet-stream');
+    res.set('Content-Disposition', 'attachment; filename="VoxCharger.exe"');
+    res.sendFile(exePath);
+  })
+);
+
 // Account settings
 webui.get(
   '/account',
@@ -3284,6 +3314,266 @@ webui.get(
       'about',
       data(req, 'About', 'core', { contributors: Array.from(contributors.values()) })
     );
+  })
+);
+
+// SDVX jacket proxy — serves jackets from the configured game install so
+// webui pages can display them without pre-copying. Reads the raw .ifs
+// archive on first use (via src/utils/ifs.ts), caches its manifest, and
+// streams out PNG-encoded textures on demand. Also honors pre-extracted
+// folder layouts (so users who already ran `ifstools` still work).
+import {
+  openIfs,
+  findTextureByBasename,
+  extractTextureAsPng,
+  extractNamedTextureAsPng,
+  findTextureEntryByRealName,
+  loadTextureList,
+  readTextFile,
+  IfsArchive,
+} from '../utils/ifs';
+
+const jacketMissCache = new Map<number, number>();
+// Per-mid PNG memo. Encoding the PNG is the slow step, so a tiny 256-entry
+// cache covers a typical VF-top-50 page with room to spare.
+const jacketPngCache = new Map<number, Buffer>();
+const JACKET_PNG_CACHE_MAX = 256;
+
+function rememberJacketPng(mid: number, png: Buffer) {
+  if (jacketPngCache.size >= JACKET_PNG_CACHE_MAX) {
+    const firstKey = jacketPngCache.keys().next().value;
+    if (firstKey !== undefined) jacketPngCache.delete(firstKey);
+  }
+  jacketPngCache.set(mid, png);
+}
+
+function findJacketInIfs(archives: IfsArchive[], padded: string): Buffer | null {
+  // Jacket filenames inside the IFS are hashed (MD5Folder), so a straight
+  // basename lookup won't hit. Instead we consult each archive's
+  // `tex/texturelist.xml`, which maps real names (e.g. `jk_0001_0`) to the
+  // hashed blob + the imgrect/uvrect the texture was authored with. Try the
+  // common suffixes in descending preference order.
+  const realNames = [
+    `jk_${padded}_0`,
+    `jk_${padded}_0_b`,
+    `jk_${padded}_0_s`,
+    `jk_${padded}_0_t`,
+    `jk_${padded}_1`,
+  ];
+  for (const name of realNames) {
+    try {
+      const png = extractNamedTextureAsPng(archives, name);
+      if (png) return png;
+    } catch (err) {
+      Logger.warn(`IFS texture extract failed for ${name}: ${(err as Error).message}`);
+    }
+  }
+  // Last-resort: some archives don't use MD5Folder and expose the real name
+  // directly in the outer manifest. Try a basename hit.
+  for (const archive of archives) {
+    for (const name of realNames) {
+      const entry = findTextureByBasename(archive, name);
+      if (entry && entry.imgrect) {
+        try {
+          return extractTextureAsPng(archive, entry);
+        } catch (err) {
+          Logger.warn(`IFS texture extract failed for ${entry.path}: ${(err as Error).message}`);
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// Admin-only IFS diagnostic — reports what the jacket route sees, so we can
+// tell quickly whether the manifest parses at all and whether our filename
+// lookups match real entries. Returns file counts, a sample of entry names,
+// and — when a mid is supplied — the exact basenames that were searched.
+webui.get(
+  '/api/sdvx/ifs-debug',
+  wrap(async (req, res) => {
+    if (!req.session.user) return res.sendStatus(401);
+    if (!req.session.user.admin) return res.sendStatus(403);
+
+    const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
+    const gameRoot = sdvxConfig.sdvx_eg_root_dir;
+    if (!gameRoot) return res.status(400).json({ error: 'sdvx_eg_root_dir not configured' });
+
+    const ifsPaths = [
+      path.join(gameRoot, 'data', 'graphics', 's_jacket00.ifs'),
+      path.join(gameRoot, 'data', 'graphics', 's_jacket01.ifs'),
+      path.join(gameRoot, 'data', 'graphics', 's_jacket02.ifs'),
+    ];
+    const report: any = { gameRoot, archives: [] };
+    for (const p of ifsPaths) {
+      const exists = existsSync(p);
+      const entry: any = { path: p, exists };
+      if (exists) {
+        try {
+          const archive = openIfs(p);
+          entry.manifestEnd = archive.manifestEnd;
+          entry.fileCount = archive.files.length;
+          entry.sampleFiles = archive.files.slice(0, 20).map(f => ({
+            path: f.path,
+            dataOffset: f.dataOffset,
+            dataSize: f.dataSize,
+            imgrect: f.imgrect,
+            uvrect: f.uvrect,
+          }));
+          entry.sampleBasenames = Array.from(archive.byBasename.keys()).slice(0, 20);
+
+          // Show a slice of the MD5Folder texturelist (if present) so we
+          // can confirm the real asset names parsed out of texturelist.xml.
+          const texList = loadTextureList(archive);
+          if (texList) {
+            entry.textureListSize = texList.size;
+            entry.textureListSample = Array.from(texList.keys()).slice(0, 20);
+          } else {
+            entry.textureListSize = null;
+          }
+
+          // Also dump the first ~2KB of the raw texturelist.xml so we can
+          // see its structure directly when parsing goes sideways.
+          const listEntry = archive.files.find(f => f.path === 'tex/texturelist.xml');
+          if (listEntry && req.query.dumpXml === '1') {
+            try {
+              const xmlText = readTextFile(archive, listEntry);
+              entry.textureListXmlPreview = xmlText.slice(0, 2048);
+              entry.textureListXmlLength = xmlText.length;
+            } catch (err) {
+              entry.textureListXmlError = (err as Error).message;
+            }
+          }
+
+          const probeMid = req.query.mid ? parseInt(String(req.query.mid)) : null;
+          if (probeMid) {
+            const padded = String(probeMid).padStart(4, '0');
+            const realNames = [
+              `jk_${padded}_0`,
+              `jk_${padded}_0_b`,
+              `jk_${padded}_0_s`,
+              `jk_${padded}_0_t`,
+              `jk_${padded}_1`,
+            ];
+            entry.probe = {
+              mid: probeMid,
+              padded,
+              realNames: realNames.map(name => {
+                const hit = findTextureEntryByRealName([archive], name);
+                return {
+                  name,
+                  foundInTextureList: !!hit,
+                  imgrect: hit?.entry.imgrect,
+                  fileSize: hit?.entry.file.dataSize,
+                };
+              }),
+              basenameHits: realNames.map(name => ({
+                name,
+                hit: !!findTextureByBasename(archive, name),
+              })),
+            };
+          }
+        } catch (err) {
+          entry.error = (err as Error).message;
+        }
+      }
+      report.archives.push(entry);
+    }
+    return res.json(report);
+  })
+);
+
+webui.get(
+  '/api/sdvx/jacket/:mid.png',
+  wrap(async (req, res) => {
+    if (!req.session.user) return res.sendStatus(401);
+    const mid = parseInt(req.params.mid);
+    if (isNaN(mid) || mid <= 0) return res.sendStatus(400);
+
+    const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
+    const gameRoot = sdvxConfig.sdvx_eg_root_dir;
+    if (!gameRoot) return res.sendStatus(404);
+
+    const cached = jacketPngCache.get(mid);
+    if (cached) {
+      res.set('Content-Type', 'image/png');
+      res.set('Cache-Control', 'public, max-age=86400');
+      return res.send(cached);
+    }
+
+    const cachedMiss = jacketMissCache.get(mid);
+    if (cachedMiss && Date.now() - cachedMiss < 60_000) return res.sendStatus(404);
+
+    const padded = String(mid).padStart(4, '0');
+    const mixName = sdvxConfig.sdvx_custom_mix_name || 'asphyxia_custom';
+
+    // 1) Try pre-extracted folders first. If the user already ran ifstools
+    //    manually, serving from the extracted directory is cheaper than
+    //    re-reading the IFS.
+    const preextractedDirs = [
+      path.join(gameRoot, 'data', 'graphics', 's_jacket00_ifs'),
+      path.join(gameRoot, 'data', 'graphics', 's_jacket01_ifs'),
+      path.join(gameRoot, 'data', 'graphics', 's_jacket02_ifs'),
+      path.join(gameRoot, 'data', 'graphics', 's_jacket00'),
+      path.join(gameRoot, 'data_mods', mixName, 'graphics', 's_jacket00_ifs'),
+    ];
+    const suffixes = ['_0.png', '_0_b.png', '_0_s.png', '_0_t.png', '_1.png'];
+    const tried: string[] = [];
+    for (const dir of preextractedDirs) {
+      for (const suffix of suffixes) {
+        const file = path.join(dir, `jk_${padded}${suffix}`);
+        tried.push(file);
+        if (existsSync(file)) {
+          res.set('Cache-Control', 'public, max-age=86400');
+          return res.sendFile(file);
+        }
+      }
+    }
+
+    // 2) Fall back to reading the .ifs archives directly. The first request
+    //    per archive parses the manifest (takes a moment on a 500MB file);
+    //    subsequent requests hit the manifest cache.
+    const ifsPaths = [
+      path.join(gameRoot, 'data', 'graphics', 's_jacket00.ifs'),
+      path.join(gameRoot, 'data', 'graphics', 's_jacket01.ifs'),
+      path.join(gameRoot, 'data', 'graphics', 's_jacket02.ifs'),
+    ].filter(p => existsSync(p));
+
+    if (ifsPaths.length === 0) {
+      jacketMissCache.set(mid, Date.now());
+      Logger.warn(
+        `sdvx jacket not found for mid=${mid} — neither pre-extracted jacket files nor an s_jacket*.ifs archive exist under ${gameRoot}/data/graphics. Tried:\n  - ${tried.join(
+          '\n  - '
+        )}`,
+        { plugin: 'sdvx@asphyxia' }
+      );
+      return res.sendStatus(404);
+    }
+
+    try {
+      const archives = ifsPaths.map(p => openIfs(p));
+      const png = findJacketInIfs(archives, padded);
+      if (png) {
+        rememberJacketPng(mid, png);
+        res.set('Content-Type', 'image/png');
+        res.set('Cache-Control', 'public, max-age=86400');
+        return res.send(png);
+      }
+    } catch (err) {
+      Logger.error(`sdvx jacket IFS read failed for mid=${mid}: ${(err as Error).message}`, {
+        plugin: 'sdvx@asphyxia',
+      });
+      return res.sendStatus(500);
+    }
+
+    jacketMissCache.set(mid, Date.now());
+    Logger.warn(
+      `sdvx jacket not found in IFS for mid=${mid} (padded=${padded}). Archives scanned: ${ifsPaths.join(
+        ', '
+      )}`,
+      { plugin: 'sdvx@asphyxia' }
+    );
+    return res.sendStatus(404);
   })
 );
 
