@@ -11,7 +11,7 @@ import {
 
 import { Logger } from './Logger';
 import path from 'path';
-import nedb from '@seald-io/nedb';
+import { SqliteStore } from './SqliteStore';
 import { nfc2card } from './CardCipher';
 import hashids from 'hashids/cjs';
 import bcrypt from 'bcryptjs';
@@ -33,45 +33,56 @@ export const ASSETS_PATH = path.join(pkg ? __dirname : `../build-env`, 'assets')
 export const SAVE_PATH = path.resolve(EXEC_PATH, ARGS.savedata);
 const COREDB_FILE = path.join(SAVE_PATH, 'core.db');
 
-const LoadDatabase = async (file: string) => {
-  const DB = new nedb({
-    filename: file,
-    timestampData: true,
-    corruptAlertThreshold: ARGS.fixdb ? 0.2 : 0,
-  });
-
-  const filename = path.basename(file);
+// Sniff a file's first 16 bytes to detect leftover NeDB / NDJSON saves.
+// SQLite files start with the literal "SQLite format 3\0"; legacy NeDB
+// `.db` files are line-delimited JSON whose first byte is '{'. If we see
+// the legacy format, exit with a clear message pointing at the migration
+// script so users don't end up with a half-loaded server.
+const isLegacyNedbFile = (file: string): boolean => {
   try {
-    await DB.loadDatabaseAsync();
-    if (filename != 'core.db') Logger.info(`Database loaded: ${filename}`, { plugin: 'db' });
-  } catch (err) {
-    if (err) {
-      if (err.message && err.message.startsWith('More than')) {
-        if (ARGS.fixdb) {
-          Logger.error(
-            `Savedata "${filename}" is more than 20% corrupted. Which means the savedata might be beyond repair. Please delete the savefile in order to keep using CORE.`
-          );
-          process.exit(1);
-        } else {
-          Logger.error(
-            `Savedata "${filename}" corruption detected. Run with "--force-load-db" argument to force load data, and corrupted portion will be discarded. It is recommended to backup savedata before force loading.`
-          );
-          process.exit(1);
-        }
-      } else {
-        Logger.error(`Can not load database "${filename}":`);
-        Logger.error(err);
-      }
+    const fd = require('fs').openSync(file, 'r');
+    const buf = Buffer.alloc(16);
+    const n = require('fs').readSync(fd, buf, 0, 16, 0);
+    require('fs').closeSync(fd);
+    if (n <= 0) return false;
+    if (buf.toString('ascii', 0, 15) === 'SQLite format 3') return false;
+    // First non-whitespace byte: '{' indicates NDJSON.
+    for (let i = 0; i < n; i++) {
+      const c = buf[i];
+      if (c === 0x09 || c === 0x0a || c === 0x0d || c === 0x20) continue;
+      return c === 0x7b; // '{'
     }
-    return null;
+    return false;
+  } catch {
+    return false;
   }
+};
 
-  const value = await DB.countAsync({ __s: 'profile' });
-  if (value < 0) {
-    Logger.error('Profile indexes is corrupted. Can not load database.');
+const LoadDatabase = async (file: string) => {
+  const filename = path.basename(file);
+
+  if (existsSync(file) && isLegacyNedbFile(file)) {
+    Logger.error(
+      `Savedata "${filename}" is in the legacy NeDB format. Run "node scripts/migrate-nedb-to-sqlite.js" to convert your savedata directory before starting the server.`
+    );
     process.exit(1);
   }
 
+  let DB: SqliteStore;
+  try {
+    DB = new SqliteStore({ filename: file, timestampData: true });
+    await DB.loadDatabaseAsync();
+    if (filename != 'core.db') Logger.info(`Database loaded: ${filename}`, { plugin: 'db' });
+  } catch (err) {
+    Logger.error(`Can not load database "${filename}":`);
+    Logger.error(err);
+    return null;
+  }
+
+  // Carryover from the NeDB era — old code re-asserted indices on every
+  // boot. SqliteStore creates the covering indices on construction, so
+  // these calls are no-ops; kept for surface compatibility with anything
+  // that still calls ensureIndexAsync directly.
   try {
     await DB.ensureIndexAsync({ fieldName: '__s' });
     await DB.ensureIndexAsync({ fieldName: '__refid' });
@@ -88,7 +99,7 @@ const LoadDatabase = async (file: string) => {
   return DB;
 };
 
-let CoreDB: nedb = null;
+let CoreDB: SqliteStore = null;
 export const LoadCoreDB = async () => {
   CoreDB = await LoadDatabase(COREDB_FILE);
 
@@ -159,7 +170,7 @@ function invalidateCardsByRefid(refid: string) {
   }
 }
 
-const DBInstances: { [key: string]: nedb } = {};
+const DBInstances: { [key: string]: SqliteStore } = {};
 
 const GET_DB = async (affiliation: string) => {
   if (!DBInstances[affiliation]) {

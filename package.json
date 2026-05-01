@@ -11,8 +11,9 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@seald-io/nedb": "^4.0.2",
     "@types/archiver": "^6.0.2",
+    "@types/better-sqlite3": "^7.6.10",
+    "better-sqlite3": "^11.5.0",
     "@types/argparse": "^1.0.38",
     "@types/bcryptjs": "^2.4.6",
     "@types/compression": "^1.8.1",

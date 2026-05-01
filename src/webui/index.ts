@@ -84,7 +84,7 @@ import { sizeof } from 'sizeof';
 import { ajax as emit } from './emit';
 import { Logger } from '../utils/Logger';
 import archiver from 'archiver';
-const { serialize: nedbSerialize } = require('@seald-io/nedb/lib/model.js');
+import { serializeDoc as nedbSerialize } from '../utils/NedbFormat';
 
 const memorystore = createMemoryStore(session);
 
