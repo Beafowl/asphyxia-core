@@ -15,7 +15,12 @@
 //  - findAsync returns a thenable cursor that also supports .sort().
 //    skip().limit().execAsync() — both call shapes appear in callers.
 
-import Database, { Database as DatabaseType } from 'better-sqlite3';
+// node:sqlite ships with Node 22.5+ (stable in 24) — no native build, no
+// Visual Studio. Loaded via require to avoid a compile-time dependency on
+// the Node typings exposing it (older @types/node may not declare it).
+const { DatabaseSync } = require('node:sqlite') as typeof import('node:sqlite');
+type DatabaseType = InstanceType<typeof DatabaseSync>;
+
 import { randomBytes } from 'crypto';
 import { get as lget, set as lset, unset as lunset, isPlainObject, isEqual } from 'lodash';
 
@@ -298,12 +303,12 @@ export class SqliteStore {
   constructor(opts: StoreOptions) {
     this.filename = opts.filename;
     this.timestampData = opts.timestampData !== false;
-    this.db = new Database(this.filename);
+    this.db = new DatabaseSync(this.filename);
     // WAL gives us concurrent readers + a single writer; durable enough
     // for arcade game state and dramatically faster on bulk score writes
     // than the default rollback journal.
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('synchronous = NORMAL');
+    this.db.exec('PRAGMA journal_mode = WAL');
+    this.db.exec('PRAGMA synchronous = NORMAL');
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS documents (
         _id        TEXT PRIMARY KEY,
@@ -322,6 +327,22 @@ export class SqliteStore {
   // No-op equivalents — present so EamuseIO calls them without changes.
   async loadDatabaseAsync(): Promise<void> { /* opened in constructor */ }
   async ensureIndexAsync(_opts: { fieldName: string }): Promise<void> { /* see __s/__refid covered indices above */ }
+
+  // Manual transaction wrapper. better-sqlite3 had a friendly `db.transaction(fn)`
+  // helper; node:sqlite doesn't, so we BEGIN/COMMIT around the body and roll
+  // back on any throw. Synchronous-only, which is fine since our writers
+  // never await inside a transaction.
+  private transaction<T>(fn: () => T): T {
+    this.db.exec('BEGIN');
+    try {
+      const result = fn();
+      this.db.exec('COMMIT');
+      return result;
+    } catch (err) {
+      try { this.db.exec('ROLLBACK'); } catch { /* ignore secondary failure */ }
+      throw err;
+    }
+  }
 
   // =========================================
   //                Reads
@@ -353,7 +374,7 @@ export class SqliteStore {
   // carries `_id`/`__s`/`__refid`/`createdAt`/`updatedAt` for matching.
   private fetchMatching(query: any): Doc[] {
     const { sql, params } = this.prefilter(query);
-    const stmt = this.db.prepare<RawRow[]>(`SELECT _id, __s, __refid, createdAt, updatedAt, data FROM documents${sql}`);
+    const stmt = this.db.prepare(`SELECT _id, __s, __refid, createdAt, updatedAt, data FROM documents${sql}`);
     const rows = stmt.all(...params) as unknown as RawRow[];
     const out: Doc[] = [];
     for (const r of rows) {
@@ -454,8 +475,11 @@ export class SqliteStore {
     }
 
     const updated: Doc[] = [];
-    const tx = this.db.transaction((docs: Doc[]) => {
-      for (const doc of docs) {
+    const updateStmt = this.db.prepare(
+      `UPDATE documents SET __s = ?, __refid = ?, createdAt = ?, updatedAt = ?, data = ? WHERE _id = ?`
+    );
+    this.transaction(() => {
+      for (const doc of targets) {
         const next = applyUpdate(doc, update);
         if (this.timestampData) next.updatedAt = new Date().toISOString();
         const __s = typeof next.__s === 'string' ? next.__s : null;
@@ -467,12 +491,10 @@ export class SqliteStore {
         delete persist._id; delete persist.__s; delete persist.__refid;
         delete persist.createdAt; delete persist.updatedAt;
 
-        this.db.prepare(`UPDATE documents SET __s = ?, __refid = ?, createdAt = ?, updatedAt = ?, data = ? WHERE _id = ?`)
-          .run(__s, __refid, cts, uts, JSON.stringify(persist), doc._id);
+        updateStmt.run(__s, __refid, cts, uts, JSON.stringify(persist), doc._id);
         updated.push(next);
       }
     });
-    tx(targets);
 
     return options.returnUpdatedDocs ? (options.multi ? updated : updated[0]) : updated.length;
   }
@@ -481,11 +503,10 @@ export class SqliteStore {
     const matched = this.fetchMatching(query);
     const targets = options.multi ? matched : matched.slice(0, 1);
     if (targets.length === 0) return 0;
-    const tx = this.db.transaction((docs: Doc[]) => {
-      const stmt = this.db.prepare(`DELETE FROM documents WHERE _id = ?`);
-      for (const d of docs) stmt.run(d._id);
+    const stmt = this.db.prepare(`DELETE FROM documents WHERE _id = ?`);
+    this.transaction(() => {
+      for (const d of targets) stmt.run(d._id);
     });
-    tx(targets);
     return targets.length;
   }
 }

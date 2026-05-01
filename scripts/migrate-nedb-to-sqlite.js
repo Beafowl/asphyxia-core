@@ -5,16 +5,20 @@
 // is replaced in place; the original is preserved with a `.nedb.bak`
 // suffix so a rollback is one rename away.
 //
-// Usage:
-//   node scripts/migrate-nedb-to-sqlite.js [savedata-dir]
+// Usage (recommended — picks up the experimental flag automatically):
+//   npm run migrate-nedb -- [savedata-dir]
+//
+// Or directly:
+//   node --experimental-sqlite scripts/migrate-nedb-to-sqlite.js [savedata-dir]
 //
 // Defaults to ./savedata. Idempotent: files already in SQLite format are
 // skipped, files already migrated (a sibling `.nedb.bak` exists) are
-// skipped.
+// skipped. Requires Node 22.5+ for the built-in node:sqlite module
+// (stable in 24, experimental in 22.5+/23 — the flag silences the warning).
 
 const fs = require('fs');
 const path = require('path');
-const Database = require('better-sqlite3');
+const { DatabaseSync } = require('node:sqlite');
 const { randomBytes } = require('crypto');
 
 const dir = process.argv[2] || path.join(process.cwd(), 'savedata');
@@ -104,10 +108,10 @@ function migrateFile(srcPath) {
   // converted .db if anything goes sideways.
   const tmp = srcPath + '.sqlite.tmp';
   if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
-  const db = new Database(tmp);
+  const db = new DatabaseSync(tmp);
   try {
-    db.pragma('journal_mode = WAL');
-    db.pragma('synchronous = NORMAL');
+    db.exec('PRAGMA journal_mode = WAL');
+    db.exec('PRAGMA synchronous = NORMAL');
     db.exec(`
       CREATE TABLE IF NOT EXISTS documents (
         _id        TEXT PRIMARY KEY,
@@ -123,8 +127,9 @@ function migrateFile(srcPath) {
     `);
 
     const insert = db.prepare(`INSERT INTO documents (_id, __s, __refid, createdAt, updatedAt, data) VALUES (?, ?, ?, ?, ?, ?)`);
-    const tx = db.transaction((docs) => {
-      for (const doc of docs) {
+    db.exec('BEGIN');
+    try {
+      for (const doc of live.values()) {
         const _id = String(doc._id || randomBytes(8).toString('hex').toUpperCase());
         const __s = typeof doc.__s === 'string' ? doc.__s : null;
         const __refid = typeof doc.__refid === 'string' ? doc.__refid : null;
@@ -144,19 +149,43 @@ function migrateFile(srcPath) {
           return v;
         }));
       }
-    });
-    tx([...live.values()]);
+      db.exec('COMMIT');
+    } catch (err) {
+      try { db.exec('ROLLBACK'); } catch { /* ignore */ }
+      throw err;
+    }
 
     db.close();
   } catch (err) {
-    db.close();
-    fs.unlinkSync(tmp);
+    try { db.close(); } catch { /* ignore */ }
+    if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
     throw err;
   }
 
-  // Promote .nedb.bak first so we always retain the original; then swap.
+  // Atomic-ish swap: rename original out of the way, then drop the new
+  // file in. If the second rename fails (Windows AV / indexer briefly
+  // holding handles), retry a few times before bailing — and if the
+  // retries don't clear it, restore the original from .nedb.bak so the
+  // caller is left with the same state they started with.
   fs.renameSync(srcPath, backup);
-  fs.renameSync(tmp, srcPath);
+  let lastErr;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      fs.renameSync(tmp, srcPath);
+      lastErr = null;
+      break;
+    } catch (err) {
+      lastErr = err;
+      // Windows EBUSY/EPERM: brief sleep then retry.
+      const wait = 100 * (attempt + 1);
+      const end = Date.now() + wait;
+      while (Date.now() < end) { /* spin */ }
+    }
+  }
+  if (lastErr) {
+    try { fs.renameSync(backup, srcPath); } catch { /* leave backup in place */ }
+    throw lastErr;
+  }
 
   return {
     migrated: true,
