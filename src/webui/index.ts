@@ -456,6 +456,60 @@ webui.use(async (req, res, next) => {
   return res.status(401).json({ success: false, description: 'Invalid API token' });
 });
 
+// Internal render-token middleware. Used exclusively by the Puppeteer
+// instance launched from /api/sdvx/vf-top-50/<refid>.png — that endpoint
+// mints a one-shot token, gives the headless browser a cookie carrying
+// it, then deletes the token after the screenshot. The middleware only
+// honours the cookie when the request is from loopback so a leaked token
+// can't impersonate a user from outside the host.
+//
+// We need this because the VF Top 50 page is gated behind the regular
+// auth middleware and uses session cookies; Puppeteer doesn't have a
+// session cookie of its own, so without this hook every sub-resource
+// (the page itself, /static assets, the jacket route) would 302 to
+// /login and the screenshot would be the login page.
+const internalRenderTokens = new Map<
+  string,
+  { user: { username: string; cardNumber: string; admin: boolean }; expiresAt: number }
+>();
+
+export function createInternalRenderToken(user: {
+  username: string;
+  cardNumber: string;
+  admin: boolean;
+}): string {
+  const now = Date.now();
+  // Sweep expired entries so the map doesn't grow unbounded under heavy use.
+  for (const [tok, entry] of internalRenderTokens) {
+    if (entry.expiresAt < now) internalRenderTokens.delete(tok);
+  }
+  const token = require('crypto').randomBytes(32).toString('hex');
+  internalRenderTokens.set(token, { user, expiresAt: now + 60_000 });
+  return token;
+}
+
+export function consumeInternalRenderToken(token: string): void {
+  internalRenderTokens.delete(token);
+}
+
+webui.use((req, res, next) => {
+  const cookieToken = req.cookies && req.cookies._render_token;
+  if (!cookieToken) return next();
+
+  // Loopback-only. req.ip can show as ::ffff:127.0.0.1 with IPv4-mapped
+  // IPv6, so cover both literals.
+  const ip = req.ip || '';
+  const isLoopback = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  if (!isLoopback) return next();
+
+  const entry = internalRenderTokens.get(cookieToken);
+  if (!entry || entry.expiresAt < Date.now()) return next();
+
+  req.session.user = entry.user;
+  (req as any).isApiAuth = true;
+  next();
+});
+
 // Nautica endpoints that must be accessible without auth (used by sync script)
 webui.get(
   '/api/nautica/version',
@@ -3490,37 +3544,90 @@ webui.get(
     const mid = parseInt(req.params.mid);
     if (isNaN(mid) || mid <= 0) return res.sendStatus(400);
 
+    // SDVX stores per-difficulty jackets — `jk_<padded>_<diffIdx>_t.png` where
+    // diffIdx is 1-indexed (NOV=1, ADV=2, EXH=3, INF/MXM=4, ULT=5). The
+    // VF Top 50 page knows the chart's `type` (0..5) and passes it in the
+    // query so we can pick the right art per row. Default to 4 (the
+    // INF/MXM slot, where most VF-relevant charts live) when the caller
+    // doesn't supply a type.
+    let type = parseInt(String(req.query.type ?? ''));
+    if (!Number.isFinite(type) || type < 0 || type > 5) type = 3;
+
     const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
     const gameRoot = sdvxConfig.sdvx_eg_root_dir;
     if (!gameRoot) return res.sendStatus(404);
 
-    const cached = jacketPngCache.get(mid);
+    // Cache key includes type — the same mid can resolve to different
+    // PNGs depending on which difficulty's art was requested.
+    const cacheKey = mid * 10 + type;
+
+    const cached = jacketPngCache.get(cacheKey);
     if (cached) {
       res.set('Content-Type', 'image/png');
       res.set('Cache-Control', 'public, max-age=86400');
       return res.send(cached);
     }
 
-    const cachedMiss = jacketMissCache.get(mid);
+    const cachedMiss = jacketMissCache.get(cacheKey);
     if (cachedMiss && Date.now() - cachedMiss < 60_000) return res.sendStatus(404);
 
     const padded = String(mid).padStart(4, '0');
     const mixName = sdvxConfig.sdvx_custom_mix_name || 'asphyxia_custom';
+    const preferredDiffIdx = type + 1; // SDVX file naming is 1-indexed
 
-    // 1) Try pre-extracted folders first. If the user already ran ifstools
-    //    manually, serving from the extracted directory is cheaper than
-    //    re-reading the IFS.
-    const preextractedDirs = [
-      path.join(gameRoot, 'data', 'graphics', 's_jacket00_ifs'),
-      path.join(gameRoot, 'data', 'graphics', 's_jacket01_ifs'),
-      path.join(gameRoot, 'data', 'graphics', 's_jacket02_ifs'),
-      path.join(gameRoot, 'data', 'graphics', 's_jacket00'),
-      path.join(gameRoot, 'data_mods', mixName, 'graphics', 's_jacket00_ifs'),
+    // 1) Plugin asset folder — where the "Extract Jackets" handler now puts
+    //    everything, so the game install stays clean. This is the
+    //    primary location.
+    // 2) Pre-extracted game-folder layouts (legacy / users who ran ifstools
+    //    by hand into data/graphics/s_jacket0X_ifs/tex/ before the move).
+    // 3) Custom-chart mix folder, asphyxia's own data_mods area.
+    const graphicsDir = path.join(gameRoot, 'data', 'graphics');
+    const preextractedDirs: string[] = [
+      path.join(PLUGIN_PATH, 'sdvx@asphyxia', 'webui', 'asset', 'jackets'),
     ];
-    const suffixes = ['_0.png', '_0_b.png', '_0_s.png', '_0_t.png', '_1.png'];
+    try {
+      if (existsSync(graphicsDir)) {
+        for (const entry of readdirSync(graphicsDir)) {
+          if (/^s_jacket\d+_ifs$/i.test(entry)) {
+            preextractedDirs.push(path.join(graphicsDir, entry, 'tex'));
+            preextractedDirs.push(path.join(graphicsDir, entry)); // fallback for non-ifstools layouts
+          }
+        }
+      }
+    } catch { /* fall through to IFS path */ }
+    preextractedDirs.push(path.join(gameRoot, 'data', 'graphics', 's_jacket00'));
+    preextractedDirs.push(path.join(gameRoot, 'data_mods', mixName, 'graphics', 's_jacket00_ifs'));
+    preextractedDirs.push(path.join(gameRoot, 'data_mods', mixName, 'graphics', 's_jacket00_ifs', 'tex'));
+
+    // Try the preferred difficulty first, then any other difficulty as a
+    // fallback (some songs only ship a subset). Within each difficulty,
+    // prefer the thumbnail (_t) since that's what ifstools extracts and
+    // what the VF Top 50 grid renders at small size, then fall back to
+    // full-size variants.
+    const diffOrder = [preferredDiffIdx];
+    for (let i = 1; i <= 6; i++) if (i !== preferredDiffIdx) diffOrder.push(i);
+    // Also try the bare `_0` legacy naming (older extractions / custom mixes).
+    const suffixVariants = (idx: number) => [
+      `_${idx}_t.png`,
+      `_${idx}.png`,
+      `_${idx}_b.png`,
+      `_${idx}_s.png`,
+    ];
+    const legacySuffixes = ['_0.png', '_0_b.png', '_0_s.png', '_0_t.png'];
+
     const tried: string[] = [];
     for (const dir of preextractedDirs) {
-      for (const suffix of suffixes) {
+      for (const idx of diffOrder) {
+        for (const suffix of suffixVariants(idx)) {
+          const file = path.join(dir, `jk_${padded}${suffix}`);
+          tried.push(file);
+          if (existsSync(file)) {
+            res.set('Cache-Control', 'public, max-age=86400');
+            return res.sendFile(file);
+          }
+        }
+      }
+      for (const suffix of legacySuffixes) {
         const file = path.join(dir, `jk_${padded}${suffix}`);
         tried.push(file);
         if (existsSync(file)) {
@@ -3530,21 +3637,23 @@ webui.get(
       }
     }
 
-    // 2) Fall back to reading the .ifs archives directly. The first request
-    //    per archive parses the manifest (takes a moment on a 500MB file);
-    //    subsequent requests hit the manifest cache.
-    const ifsPaths = [
-      path.join(gameRoot, 'data', 'graphics', 's_jacket00.ifs'),
-      path.join(gameRoot, 'data', 'graphics', 's_jacket01.ifs'),
-      path.join(gameRoot, 'data', 'graphics', 's_jacket02.ifs'),
-    ].filter(p => existsSync(p));
+    // 2) Fall back to reading the .ifs archives directly. Same dynamic
+    //    discovery — pick up every s_jacket*.ifs in the graphics dir.
+    let ifsPaths: string[] = [];
+    try {
+      if (existsSync(graphicsDir)) {
+        ifsPaths = readdirSync(graphicsDir)
+          .filter(f => /^s_jacket\d+\.ifs$/i.test(f))
+          .map(f => path.join(graphicsDir, f));
+      }
+    } catch { /* leave empty */ }
 
     if (ifsPaths.length === 0) {
-      jacketMissCache.set(mid, Date.now());
+      jacketMissCache.set(cacheKey, Date.now());
       Logger.warn(
-        `sdvx jacket not found for mid=${mid} — neither pre-extracted jacket files nor an s_jacket*.ifs archive exist under ${gameRoot}/data/graphics. Tried:\n  - ${tried.join(
-          '\n  - '
-        )}`,
+        `sdvx jacket not found for mid=${mid} type=${type} — neither pre-extracted jacket files nor an s_jacket*.ifs archive exist under ${graphicsDir}. First few paths tried:\n  - ${tried
+          .slice(0, 5)
+          .join('\n  - ')}`,
         { plugin: 'sdvx@asphyxia' }
       );
       return res.sendStatus(404);
@@ -3554,7 +3663,7 @@ webui.get(
       const archives = ifsPaths.map(p => openIfs(p));
       const png = findJacketInIfs(archives, padded);
       if (png) {
-        rememberJacketPng(mid, png);
+        rememberJacketPng(cacheKey, png);
         res.set('Content-Type', 'image/png');
         res.set('Cache-Control', 'public, max-age=86400');
         return res.send(png);
@@ -3566,14 +3675,185 @@ webui.get(
       return res.sendStatus(500);
     }
 
-    jacketMissCache.set(mid, Date.now());
+    jacketMissCache.set(cacheKey, Date.now());
     Logger.warn(
-      `sdvx jacket not found in IFS for mid=${mid} (padded=${padded}). Archives scanned: ${ifsPaths.join(
+      `sdvx jacket not found in IFS for mid=${mid} (padded=${padded}, type=${type}). Archives scanned: ${ifsPaths.join(
         ', '
       )}`,
       { plugin: 'sdvx@asphyxia' }
     );
     return res.sendStatus(404);
+  })
+);
+
+// Auto-detect a Chromium-compatible browser executable. Used by the VF Top
+// 50 PNG render endpoint when the operator hasn't set sdvx_chrome_path
+// explicitly. Covers Chrome's three Windows install locations + the system
+// Edge fallback (Edge ships pre-installed on Windows 10/11), plus the
+// canonical macOS / Linux paths so the same code works on a non-Windows
+// asphyxia host.
+function autoDetectChromePath(): string | null {
+  const env = process.env;
+  const candidates: string[] = [];
+  if (process.platform === 'win32') {
+    if (env.ProgramFiles) {
+      candidates.push(path.join(env.ProgramFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'));
+      candidates.push(path.join(env.ProgramFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'));
+    }
+    const pf86 = env['ProgramFiles(x86)'];
+    if (pf86) {
+      candidates.push(path.join(pf86, 'Google', 'Chrome', 'Application', 'chrome.exe'));
+      candidates.push(path.join(pf86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'));
+    }
+    if (env.LOCALAPPDATA) {
+      candidates.push(path.join(env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe'));
+    }
+  } else if (process.platform === 'darwin') {
+    candidates.push('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
+    candidates.push('/Applications/Chromium.app/Contents/MacOS/Chromium');
+    candidates.push('/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge');
+  } else {
+    candidates.push('/usr/bin/google-chrome');
+    candidates.push('/usr/bin/google-chrome-stable');
+    candidates.push('/usr/bin/chromium-browser');
+    candidates.push('/usr/bin/chromium');
+    candidates.push('/snap/bin/chromium');
+    candidates.push('/usr/bin/microsoft-edge');
+  }
+  for (const p of candidates) {
+    try {
+      if (existsSync(p)) return p;
+    } catch { /* ignore bad path */ }
+  }
+  return null;
+}
+
+// VF Top 50 PNG renderer. Designed for a Discord bot or other automation:
+// the bot authenticates with an OAuth bearer token (the same token any
+// other API endpoint accepts — see the OAuth middleware at the top of
+// this file), the endpoint launches puppeteer-core against an
+// auto-detected Chrome, opens the existing VF Top 50 page on loopback,
+// and returns the rendered PNG.
+//
+// We reuse the existing pug page instead of re-implementing the layout
+// in node-canvas so any CSS / font tweak that lands on the page applies
+// automatically. Auth is handled with a one-shot internal render token
+// (loopback-only — see the middleware further up) so puppeteer doesn't
+// need to forward the bot's OAuth bearer to every sub-resource.
+webui.get(
+  '/api/sdvx/vf-top-50/:refid.png',
+  wrap(async (req, res) => {
+    if (!req.session.user) return res.sendStatus(401);
+
+    const refid = req.params.refid;
+    if (!refid || refid.length < 8) {
+      return res.status(400).json({ success: false, error: 'invalid refid' });
+    }
+
+    const isAdmin = !!req.session.user.admin;
+    const isOwner = await userOwnsProfile(req, refid);
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({ success: false, error: 'forbidden' });
+    }
+
+    let version = parseInt(String(req.query.version ?? ''));
+    if (!Number.isFinite(version) || version < 1 || version > 7) version = 7;
+
+    const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
+    const explicitChrome = (sdvxConfig.sdvx_chrome_path || '').toString().trim();
+    const chromePath = explicitChrome || autoDetectChromePath();
+    if (!chromePath) {
+      return res.status(500).json({
+        success: false,
+        error:
+          'No Chromium-based browser found on this host. Install Google Chrome (or Microsoft Edge), or set `sdvx_chrome_path` in the plugin config to an explicit executable path.',
+      });
+    }
+    if (explicitChrome && !existsSync(explicitChrome)) {
+      return res.status(500).json({
+        success: false,
+        error: `sdvx_chrome_path is set but does not point at an existing file: ${explicitChrome}`,
+      });
+    }
+
+    const internalToken = createInternalRenderToken({
+      username: req.session.user.username,
+      cardNumber: req.session.user.cardNumber || '',
+      admin: req.session.user.admin,
+    });
+
+    const port = req.socket.localPort || CONFIG.port;
+    const targetUrl =
+      `http://127.0.0.1:${port}/plugin/sdvx@asphyxia/profile?refid=${encodeURIComponent(refid)}` +
+      `&page=------vf_top_50&version=${version}`;
+
+    const puppeteer = require('puppeteer-core');
+    let browser: any = null;
+    try {
+      browser = await puppeteer.launch({
+        executablePath: chromePath,
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--hide-scrollbars',
+        ],
+      });
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1100, height: 1600, deviceScaleFactor: 1 });
+      await page.setCookie({
+        name: '_render_token',
+        value: internalToken,
+        domain: '127.0.0.1',
+        path: '/',
+        httpOnly: true,
+      });
+      await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 30_000 });
+
+      // Wait for the canvas root to render with all entries plus their
+      // jacket <img>s loaded (or marked broken by onerror — we don't want
+      // to hang forever if a single jacket 404s). Also wait on font
+      // loading so the export doesn't fall back to the generic sans.
+      await page
+        .waitForFunction(
+          () => {
+            const root = document.querySelector('#vf_top50_canvas_root');
+            if (!root) return false;
+            const entries = root.querySelectorAll('.vf-entry');
+            if (entries.length === 0) return false;
+            const imgs = Array.from(root.querySelectorAll('img')) as HTMLImageElement[];
+            return imgs.every(img => img.complete);
+          },
+          { timeout: 15_000 }
+        )
+        .catch(() => { /* fall through and screenshot whatever rendered */ });
+      await page.evaluate(() => (document as any).fonts && (document as any).fonts.ready).catch(() => {});
+
+      const handle = await page.$('#vf_top50_canvas_root');
+      if (!handle) {
+        throw new Error('VF Top 50 canvas root not found in rendered page');
+      }
+      const png = await handle.screenshot({ type: 'png' });
+
+      res.set('Content-Type', 'image/png');
+      res.set('Cache-Control', 'no-store');
+      res.set('Content-Disposition', `inline; filename="vf-top-50-${refid}-v${version}.png"`);
+      res.send(png);
+    } catch (err: any) {
+      Logger.error(`VF Top 50 render failed for refid=${refid}: ${err.message || err}`);
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          error: err.message || 'Render failed',
+        });
+      }
+    } finally {
+      consumeInternalRenderToken(internalToken);
+      if (browser) {
+        try { await browser.close(); } catch { /* best effort */ }
+      }
+    }
   })
 );
 

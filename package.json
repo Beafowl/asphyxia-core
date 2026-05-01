@@ -57,6 +57,7 @@
     "prettier": "^2.0.5",
     "pretty-bytes": "^5.6.0",
     "pug": "^3.0.2",
+    "puppeteer-core": "^24.42.0",
     "resedit-cli": "^2.0.0",
     "showdown": "^1.9.1",
     "sizeof": "^1.0.0",
