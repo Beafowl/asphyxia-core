@@ -31,7 +31,7 @@
     "@types/pug": "^2.0.4",
     "@types/showdown": "^1.9.3",
     "@types/sizeof": "^1.0.1",
-    "@vercel/ncc": "^0.28.3",
+    "@vercel/ncc": "^0.38.4",
     "archiver": "^6.0.1",
     "argparse": "^1.0.10",
     "bcryptjs": "^3.0.3",
@@ -52,7 +52,7 @@
     "memorystore": "^1.6.2",
     "multer": "^1.4.2",
     "open": "^7.0.4",
-    "pkg": "5.8.1",
+    "@yao-pkg/pkg": "^6.19.0",
     "pngjs": "^7.0.0",
     "prettier": "^2.0.5",
     "pretty-bytes": "^5.6.0",
@@ -65,5 +65,10 @@
     "typedoc": "^0.22.15",
     "typescript": "^4.2.3",
     "winston": "^3.2.1"
+  },
+  "overrides": {
+    "@yao-pkg/pkg": {
+      "into-stream": "^6.0.0"
+    }
   }
 }

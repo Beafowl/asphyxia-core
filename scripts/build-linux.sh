@@ -7,8 +7,6 @@ regex='VERSION = '"'"'([a-z0-9.]*)'"'"''
 
 VERSION=${BASH_REMATCH[1]}
 
-export NODE_OPTIONS=--openssl-legacy-provider
-
 echo "Building Version $VERSION for Linux"
 
 echo "NPM Install"
@@ -27,7 +25,9 @@ cp -r typescript ./node_modules/
 
 echo "Packing binaries"
 cd ..
-npx pkg ./build-env -t node16.16.0-linux-x64 -o ./build/asphyxia-core --options no-warnings
+# Node 22 is the floor for node:sqlite; the experimental-sqlite flag is
+# baked into the snapshot via --options so end users don't need to know.
+npx @yao-pkg/pkg ./build-env -t node22-linux-x64 -o ./build/asphyxia-core --options "no-warnings,experimental-sqlite"
 
 echo "Compressing"
 

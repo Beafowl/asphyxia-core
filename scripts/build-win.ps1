@@ -1,18 +1,11 @@
 # Getting version
 $VER_CODE = Select-String -Path ".\src\utils\Consts.ts" -Pattern "VERSION = '(.*)'"
 $VERSION = $VER_CODE.Matches.Groups[1].Value;
-$env:NODE_OPTIONS = "--openssl-legacy-provider"
 
 Write-Output "Building Version $VERSION for Windows"
 
 # Prepare directories
 New-Item -Path "." -Name "build" -ItemType "directory" -Force | Out-Null
-
-Write-Output "Copying windows node binary cache"
-New-Item -Path "$env:USERPROFILE" -Name ".pkg-cache" -ItemType "directory" -Force | Out-Null
-New-Item -Path "$env:USERPROFILE\.pkg-cache" -Name "v2.6" -ItemType "directory" -Force | Out-Null
-Copy-Item -Path "build-env\pkg-cache\*" -Destination "$env:USERPROFILE\.pkg-cache\v2.6"
-
 
 Write-Output "NPM Install"
 npm ci
@@ -32,19 +25,22 @@ Copy-Item -Recurse -Path "typescript" -Destination "node_modules/"
 
 Set-Location -Path ".."
 
-$env:PKG_CACHE_PATH = "$env:USERPROFILE\.pkg-cache"
-$env:PKG_IGNORE_TAG = "true" # prevents pkg-fetch to add a tag folder
-
-# Move prebuilt binaries
-Copy-Item -Path ".\build-env\pkg-cache\built-v16.16.0-win-x86" -Destination "$env:USERPROFILE\.pkg-cache\"
-Copy-Item -Path ".\build-env\pkg-cache\built-v16.16.0-win-x64" -Destination "$env:USERPROFILE\.pkg-cache\"
+# @yao-pkg/pkg fetches Node 22 base binaries from yao-pkg/pkg-fetch GitHub
+# releases on first build, then caches them under ~/.pkg-cache. The bumped
+# Node is required for node:sqlite (added in Node 22.5; pkg 5.x topped out
+# at Node 18 and the bundled v16 had no SQLite at all).
+#
+# `experimental-sqlite` is baked into the snapshot via --options so that
+# end users running the .exe don't need to know about a Node flag —
+# stable in Node 24 (ignored), required + warning-suppressed by
+# --no-warnings on Node 22.x.
+#
+# Windows x86 (ia32) is dropped: yao-pkg-fetch doesn't ship 32-bit
+# Windows prebuilts past Node 18, and Node itself stopped publishing
+# them. Anyone still on 32-bit Windows can run the dev path from source.
 
 Write-Output "Packing binaries"
 
 # Packing x64
-npx pkg .\build-env -t "node16.16.0-win-x64" -o .\build\asphyxia-core-x64 --options no-warnings
+npx @yao-pkg/pkg .\build-env -t "node22-win-x64" -o .\build\asphyxia-core-x64 --options "no-warnings,experimental-sqlite"
 Compress-Archive -Path ".\build\asphyxia-core-x64.exe", ".\plugins" -DestinationPath ".\build\asphyxia-core-win-x64.zip" -Force
-
-# Packing x86
-npx pkg .\build-env -t "node16.16.0-win-x86" -o .\build\asphyxia-core-x86 --options no-warnings
-Compress-Archive -Path ".\build\asphyxia-core-x86.exe", ".\plugins" -DestinationPath ".\build\asphyxia-core-win-x86.zip" -Force
