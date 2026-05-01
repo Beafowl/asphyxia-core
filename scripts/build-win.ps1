@@ -43,4 +43,19 @@ Write-Output "Packing binaries"
 
 # Packing x64
 npx @yao-pkg/pkg .\build-env -t "node22-win-x64" -o .\build\asphyxia-core-x64 --options "no-warnings,experimental-sqlite"
+
+# Replace the bundled Node.exe's icon with our own. resedit-cli rewrites
+# the PE resource section in place — drops every existing RT_ICON /
+# RT_GROUP_ICON entry and injects icon.ico in their slot. --allow-shrink
+# is required because our icon's resource section is typically smaller
+# than Node's. Skip silently if icon.ico isn't present so the build
+# still works on a fresh checkout that hasn't dropped one in yet.
+if (Test-Path ".\icon.ico") {
+    Write-Output "Stamping icon.ico onto x64 exe"
+    npx resedit --in ".\build\asphyxia-core-x64.exe" --out ".\build\asphyxia-core-x64.iconed.exe" --delete-allicon --icon ".\icon.ico" --allow-shrink
+    Move-Item -Force ".\build\asphyxia-core-x64.iconed.exe" ".\build\asphyxia-core-x64.exe"
+} else {
+    Write-Output "icon.ico not found at repo root; skipping icon injection"
+}
+
 Compress-Archive -Path ".\build\asphyxia-core-x64.exe", ".\plugins" -DestinationPath ".\build\asphyxia-core-win-x64.zip" -Force
