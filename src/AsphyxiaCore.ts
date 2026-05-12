@@ -1,5 +1,14 @@
 if ((process as any).pkg) process.env.NODE_ENV = 'production';
 
+process.on('uncaughtException', (err: any) => {
+  console.error('[Fatal]', err?.stack || err);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason: any) => {
+  console.error('[Fatal] Unhandled rejection:', reason?.stack || reason);
+  process.exit(1);
+});
+
 import { Logger } from './utils/Logger';
 import { ARGS, CONFIG, ReadConfig, SaveConfig } from './utils/ArgConfig';
 import { services } from './eamuse';
