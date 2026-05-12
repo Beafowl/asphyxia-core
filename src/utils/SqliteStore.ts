@@ -322,6 +322,35 @@ export class SqliteStore {
       CREATE INDEX IF NOT EXISTS idx_documents_refid    ON documents(__refid);
       CREATE INDEX IF NOT EXISTS idx_documents_s_refid  ON documents(__s, __refid);
     `);
+
+    // Add generated columns for the two most-queried JSON fields so SQL
+    // can filter and join on them with an index instead of pulling every
+    // row into JS. VIRTUAL means SQLite recomputes on read — no extra
+    // storage. ALTER TABLE ADD COLUMN is guarded by an existence check so
+    // this is safe to run on every open (new and existing databases alike).
+    const existingCols = new Set(
+      (this.db.prepare('PRAGMA table_info(documents)').all() as any[]).map((c: any) => c.name)
+    );
+    if (!existingCols.has('_collection')) {
+      this.db.exec(
+        `ALTER TABLE documents ADD COLUMN _collection TEXT GENERATED ALWAYS AS (json_extract(data, '$.collection')) VIRTUAL`
+      );
+    }
+    if (!existingCols.has('_mid')) {
+      this.db.exec(
+        `ALTER TABLE documents ADD COLUMN _mid INTEGER GENERATED ALWAYS AS (CAST(json_extract(data, '$.mid') AS INTEGER)) VIRTUAL`
+      );
+    }
+    // Indexes covering the hot query patterns:
+    //   - collection alone  (hiscore scan, nautica list)
+    //   - refid + collection (load_m: all scores for a player)
+    //   - refid + collection + mid (save_m: one score row for a player+song)
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_documents_collection       ON documents(_collection);
+      CREATE INDEX IF NOT EXISTS idx_documents_s_collection     ON documents(__s, _collection);
+      CREATE INDEX IF NOT EXISTS idx_documents_refid_collection ON documents(__refid, _collection);
+      CREATE INDEX IF NOT EXISTS idx_documents_refid_coll_mid   ON documents(__refid, _collection, _mid);
+    `);
   }
 
   // No-op equivalents — present so EamuseIO calls them without changes.
@@ -362,6 +391,11 @@ export class SqliteStore {
       if (typeof r === 'string') { wheres.push('__refid = ?'); params.push(r); }
       const id = query._id;
       if (typeof id === 'string') { wheres.push('_id = ?'); params.push(id); }
+      // Generated column filters — these hit indexes and avoid JS-side scanning
+      const coll = query.collection;
+      if (typeof coll === 'string') { wheres.push('_collection = ?'); params.push(coll); }
+      const mid = query.mid;
+      if (typeof mid === 'number') { wheres.push('_mid = ?'); params.push(mid); }
     }
     return {
       sql: wheres.length ? ' WHERE ' + wheres.join(' AND ') : '',

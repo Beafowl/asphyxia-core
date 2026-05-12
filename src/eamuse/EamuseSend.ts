@@ -103,7 +103,11 @@ export class EamuseSend {
     const kBinLen = data.length;
     if (compress && kBinLen > 500) {
       xcompress = 'lz77';
-      data = LzKN.deflate(data);
+      // deflateDummy wraps every byte as a literal (O(n) vs the real
+      // deflate's O(n × LOOK_RANGE) sliding-window search). Output is
+      // valid lz77 and decompresses correctly on the client; the ~12 %
+      // size overhead is negligible on a local network.
+      data = LzKN.deflateDummy(data);
     }
     this.res.setHeader('X-Compress', xcompress);
 
