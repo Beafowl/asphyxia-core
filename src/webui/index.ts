@@ -76,6 +76,7 @@ import {
 } from '../utils/EamuseIO';
 import { urlencoded, json } from 'body-parser';
 import path from 'path';
+import * as iconv from 'iconv-lite';
 import { ROOT_CONTAINER } from '../eamuse/index';
 import { fun } from './fun';
 import { card2nfc, nfc2card, cardType } from '../utils/CardCipher';
@@ -683,17 +684,80 @@ function exchangeAuthCodeForTokens(
 webui.get(
   '/api/nautica/music-db-xml',
   wrap(async (req, res) => {
-    const sdvxConfig = CONFIG['sdvx@asphyxia'] || {};
-    const gameRoot = sdvxConfig.sdvx_eg_root_dir;
-    const mixName = sdvxConfig.sdvx_custom_mix_name || 'asphyxia_custom';
-    if (!gameRoot) return res.status(400).json({ error: 'Game directory not configured' });
+    const sdvxPlugin = { identifier: 'sdvx@asphyxia', core: false };
+    const allSongs = (await APIFind(sdvxPlugin, { collection: 'nautica_song' })) as any[];
+    const ready = (allSongs || [])
+      .filter((s: any) => s.mid > 0 && s.status === 'ready')
+      .sort((a: any, b: any) => a.mid - b.mid);
 
-    const xmlPath = path.join(gameRoot, 'data_mods', mixName, 'others', 'music_db.merged.xml');
-    if (!existsSync(xmlPath)) return res.sendStatus(404);
+    const sjisDummy = '\x83\x5F\x83\x7E\x81\x5B'; // ダミー in Shift-JIS
 
-    res.set('Content-Type', 'application/xml');
-    res.set('Content-Disposition', `attachment; filename="music_db.merged.xml"`);
-    res.sendFile(xmlPath);
+    const escXml = (s: string) =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+       .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+
+    const toSjis = (s: string) =>
+      iconv.encode(escXml(s), 'Shift_JIS').toString('binary');
+
+    const sanitize = (t: string) =>
+      (t.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_')
+        .replace(/^_|_$/g, '').substring(0, 16).toLowerCase()) || 'custom';
+
+    const diffNames = ['novice', 'advanced', 'exhaust', 'infinite', 'maximum'] as const;
+    const nauticaToXml: Record<number, string> = { 1: 'novice', 2: 'advanced', 3: 'exhaust', 4: 'maximum' };
+
+    const entries = ready.map((song: any) => {
+      const exhChart = (song.charts || []).find((c: any) => c.difficulty === 3);
+      const mainEff = exhChart?.effector || song.charts?.[0]?.effector || '-';
+      const bpmMin = song.bpmMin || 120;
+      const bpmMax = song.bpmMax || bpmMin;
+      const d = song.convertedAt ? new Date(song.convertedAt) : new Date();
+      const dist = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+
+      const diffs: Record<string, { level: number; eff: string }> = {};
+      for (const n of diffNames) diffs[n] = { level: 0, eff: '-' };
+      for (const chart of (song.charts || [])) {
+        const k = nauticaToXml[chart.difficulty];
+        if (k) diffs[k] = { level: chart.level, eff: chart.effector || '-' };
+      }
+
+      const diffBlock = (name: string) =>
+        `<${name}><difnum __type="u8">${diffs[name].level}</difnum>` +
+        `<illustrator>-</illustrator>` +
+        `<effected_by>${toSjis(diffs[name].eff)}</effected_by>` +
+        `<limited __type="u8">0</limited></${name}>`;
+
+      return (
+        `<music id="${song.mid}"><info>` +
+        `<title_name>${toSjis(song.title || '')}</title_name>` +
+        `<title_yomigana>${sjisDummy}</title_yomigana>` +
+        `<artist_name>${toSjis(song.artist || '')}</artist_name>` +
+        `<artist_yomigana>${sjisDummy}</artist_yomigana>` +
+        `<ascii>${sanitize(song.title || 'custom')}</ascii>` +
+        `<bpm_min __type="u32">${bpmMin}</bpm_min>` +
+        `<bpm_max __type="u32">${bpmMax}</bpm_max>` +
+        `<distribution_date __type="u32">${dist}</distribution_date>` +
+        `<version __type="u8">7</version>` +
+        `<inf_ver __type="u8">0</inf_ver>` +
+        `<demo_pri __type="s8">-1</demo_pri>` +
+        `<world __type="u8">0</world>` +
+        `<hold __type="u8">0</hold>` +
+        `<is_fixed __type="u8">1</is_fixed>` +
+        `<illustrator>-</illustrator>` +
+        `<effected_by>${toSjis(mainEff)}</effected_by>` +
+        `<comment></comment>` +
+        `<price __type="s32">-1</price>` +
+        `<limited __type="u8">0</limited>` +
+        `</info><difficulty>` +
+        diffNames.map(diffBlock).join('') +
+        `</difficulty></music>`
+      );
+    }).join('');
+
+    const xml = `<?xml version="1.0" encoding="shift_jis"?><mdb>${entries}</mdb>`;
+    res.set('Content-Type', 'application/xml; charset=shift_jis');
+    res.set('Content-Disposition', 'attachment; filename="music_db.merged.xml"');
+    res.send(Buffer.from(xml, 'binary'));
   })
 );
 
