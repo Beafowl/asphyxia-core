@@ -73,9 +73,8 @@ const LoadDatabase = async (file: string) => {
     DB = new SqliteStore({ filename: file, timestampData: true });
     await DB.loadDatabaseAsync();
     if (filename != 'core.db') Logger.info(`Database loaded: ${filename}`, { plugin: 'db' });
-  } catch (err) {
-    Logger.error(`Can not load database "${filename}":`);
-    Logger.error(err);
+  } catch (err: any) {
+    Logger.error(`Can not load database "${filename}": ${err?.stack || err?.message || String(err)}`);
     return null;
   }
 
@@ -101,6 +100,9 @@ const LoadDatabase = async (file: string) => {
 
 let CoreDB: SqliteStore = null;
 export const LoadCoreDB = async () => {
+  // SQLite won't create core.db in a non-existent parent dir — make one.
+  PrepareDirectory(SAVE_PATH);
+
   CoreDB = await LoadDatabase(COREDB_FILE);
 
   if (!CoreDB) {

@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "tsc && node scripts/sync-plugins.js && cd dist && node --experimental-sqlite --no-warnings AsphyxiaCore.js --dev",
     "build": "tsc",
+    "build:win": "powershell -ExecutionPolicy Bypass -File scripts/build-win.ps1",
     "migrate-nedb": "node --experimental-sqlite --no-warnings scripts/migrate-nedb-to-sqlite.js"
   },
   "dependencies": {
