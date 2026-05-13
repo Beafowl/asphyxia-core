@@ -690,71 +690,104 @@ webui.get(
       .filter((s: any) => s.mid > 0 && s.status === 'ready')
       .sort((a: any, b: any) => a.mid - b.mid);
 
+    // The XML schema below mirrors plugins/sdvx@asphyxia/handlers/
+    // converter.ts:buildMusicEntry — keep them in sync. Notable points:
+    //  * BPM is fixed-point u32 = BPM × 100 in the file (175.00 → 17500).
+    //  * limited=3 marks a chart playable; the earlier template used 0
+    //    which the game treats as locked — that's why no custom charts
+    //    appeared in-game even when the file looked plausible.
+    //  * Missing-chart slots still need a stub block with difnum=0 and
+    //    illustrator=effected_by="dummy", but no <radar>.
     const sjisDummy = '\x83\x5F\x83\x7E\x81\x5B'; // ダミー in Shift-JIS
 
     const escXml = (s: string) =>
       s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
        .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
-
     const toSjis = (s: string) =>
       iconv.encode(escXml(s), 'Shift_JIS').toString('binary');
-
     const sanitize = (t: string) =>
       (t.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_')
         .replace(/^_|_$/g, '').substring(0, 16).toLowerCase()) || 'custom';
 
-    const diffNames = ['novice', 'advanced', 'exhaust', 'infinite', 'maximum'] as const;
-    const nauticaToXml: Record<number, string> = { 1: 'novice', 2: 'advanced', 3: 'exhaust', 4: 'maximum' };
+    const diffMap: Record<number, 'novice' | 'advanced' | 'exhaust' | 'maximum'> =
+      { 1: 'novice', 2: 'advanced', 3: 'exhaust', 4: 'maximum' };
+
+    const diffBlock = (
+      name: 'novice' | 'advanced' | 'exhaust' | 'maximum',
+      charts: Record<string, { level: number; effector: string }>
+    ) => {
+      const c = charts[name];
+      const present = !!c && c.level > 0;
+      const difnum = present ? c.level : 0;
+      const illustrator = present ? '-' : 'dummy';
+      const effected = present ? toSjis(c.effector) : 'dummy';
+      const radar = present
+        ? '        <radar>\n' +
+          '          <notes __type="u8">0</notes>\n' +
+          '          <peak __type="u8">0</peak>\n' +
+          '          <tsumami __type="u8">0</tsumami>\n' +
+          '          <tricky __type="u8">0</tricky>\n' +
+          '          <hand-trip __type="u8">0</hand-trip>\n' +
+          '          <one-hand __type="u8">0</one-hand>\n' +
+          '        </radar>\n'
+        : '';
+      return (
+        `      <${name}>\n` +
+        `        <difnum __type="u8">${difnum}</difnum>\n` +
+        `        <illustrator>${illustrator}</illustrator>\n` +
+        `        <effected_by>${effected}</effected_by>\n` +
+        `        <price __type="s32">-1</price>\n` +
+        `        <limited __type="u8">3</limited>\n` +
+        `        <jacket_print __type="s32">-2</jacket_print>\n` +
+        `        <jacket_mask __type="s32">0</jacket_mask>\n` +
+        radar +
+        `      </${name}>\n`
+      );
+    };
 
     const entries = ready.map((song: any) => {
-      const exhChart = (song.charts || []).find((c: any) => c.difficulty === 3);
-      const mainEff = exhChart?.effector || song.charts?.[0]?.effector || '-';
-      const bpmMin = song.bpmMin || 120;
-      const bpmMax = song.bpmMax || bpmMin;
+      const bpmMin = (song.bpmMin || 120) * 100;
+      const bpmMax = (song.bpmMax || song.bpmMin || 120) * 100;
       const d = song.convertedAt ? new Date(song.convertedAt) : new Date();
       const dist = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 
-      const diffs: Record<string, { level: number; eff: string }> = {};
-      for (const n of diffNames) diffs[n] = { level: 0, eff: '-' };
-      for (const chart of (song.charts || [])) {
-        const k = nauticaToXml[chart.difficulty];
-        if (k) diffs[k] = { level: chart.level, eff: chart.effector || '-' };
+      const charts: Record<string, { level: number; effector: string }> = {};
+      for (const c of (song.charts || [])) {
+        const k = diffMap[c.difficulty];
+        if (k) charts[k] = { level: c.level, effector: c.effector || '-' };
       }
 
-      const diffBlock = (name: string) =>
-        `<${name}><difnum __type="u8">${diffs[name].level}</difnum>` +
-        `<illustrator>-</illustrator>` +
-        `<effected_by>${toSjis(diffs[name].eff)}</effected_by>` +
-        `<limited __type="u8">0</limited></${name}>`;
-
       return (
-        `<music id="${song.mid}"><info>` +
-        `<title_name>${toSjis(song.title || '')}</title_name>` +
-        `<title_yomigana>${sjisDummy}</title_yomigana>` +
-        `<artist_name>${toSjis(song.artist || '')}</artist_name>` +
-        `<artist_yomigana>${sjisDummy}</artist_yomigana>` +
-        `<ascii>${sanitize(song.title || 'custom')}</ascii>` +
-        `<bpm_min __type="u32">${bpmMin}</bpm_min>` +
-        `<bpm_max __type="u32">${bpmMax}</bpm_max>` +
-        `<distribution_date __type="u32">${dist}</distribution_date>` +
-        `<version __type="u8">7</version>` +
-        `<inf_ver __type="u8">0</inf_ver>` +
-        `<demo_pri __type="s8">-1</demo_pri>` +
-        `<world __type="u8">0</world>` +
-        `<hold __type="u8">0</hold>` +
-        `<is_fixed __type="u8">1</is_fixed>` +
-        `<illustrator>-</illustrator>` +
-        `<effected_by>${toSjis(mainEff)}</effected_by>` +
-        `<comment></comment>` +
-        `<price __type="s32">-1</price>` +
-        `<limited __type="u8">0</limited>` +
-        `</info><difficulty>` +
-        diffNames.map(diffBlock).join('') +
-        `</difficulty></music>`
+        `  <music id="${song.mid}">\n` +
+        `    <info>\n` +
+        `      <label>${song.mid}</label>\n` +
+        `      <title_name>${toSjis(song.title || '')}</title_name>\n` +
+        `      <title_yomigana>${sjisDummy}</title_yomigana>\n` +
+        `      <artist_name>${toSjis(song.artist || '')}</artist_name>\n` +
+        `      <artist_yomigana>${sjisDummy}</artist_yomigana>\n` +
+        `      <ascii>${sanitize(song.title || 'custom')}</ascii>\n` +
+        `      <bpm_max __type="u32">${bpmMax}</bpm_max>\n` +
+        `      <bpm_min __type="u32">${bpmMin}</bpm_min>\n` +
+        `      <distribution_date __type="u32">${dist}</distribution_date>\n` +
+        `      <volume __type="u16">91</volume>\n` +
+        `      <bg_no __type="u16">1</bg_no>\n` +
+        `      <genre __type="u8">16</genre>\n` +
+        `      <is_fixed __type="u8">1</is_fixed>\n` +
+        `      <version __type="u8">7</version>\n` +
+        `      <demo_pri __type="s8">0</demo_pri>\n` +
+        `      <inf_ver __type="u8">0</inf_ver>\n` +
+        `    </info>\n` +
+        `    <difficulty>\n` +
+        diffBlock('novice', charts) +
+        diffBlock('advanced', charts) +
+        diffBlock('exhaust', charts) +
+        diffBlock('maximum', charts) +
+        `    </difficulty>\n` +
+        `  </music>\n`
       );
     }).join('');
 
-    const xml = `<?xml version="1.0" encoding="shift_jis"?><mdb>${entries}</mdb>`;
+    const xml = `<?xml version="1.0" encoding="shift_jis"?>\n<mdb>\n${entries}</mdb>\n`;
     res.set('Content-Type', 'application/xml; charset=shift_jis');
     res.set('Content-Disposition', 'attachment; filename="music_db.merged.xml"');
     res.send(Buffer.from(xml, 'binary'));
