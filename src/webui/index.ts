@@ -718,8 +718,10 @@ webui.get(
     ) => {
       const c = charts[name];
       const present = !!c && c.level > 0;
-      const difnum = present ? c.level : 0;
-      const illustrator = present ? '-' : 'dummy';
+      // EG stores difnum as level × 10 (175 → 17.5★). Emitting the raw
+      // level makes the game read it as 1.8 and reject the chart.
+      const difnum = present ? c.level * 10 : 0;
+      const illustrator = present ? '' : 'dummy';
       const effected = present ? toSjis(c.effector) : 'dummy';
       const radar = present
         ? '        <radar>\n' +
@@ -770,8 +772,8 @@ webui.get(
         `      <bpm_min __type="u32">${bpmMin}</bpm_min>\n` +
         `      <distribution_date __type="u32">${dist}</distribution_date>\n` +
         `      <volume __type="u16">91</volume>\n` +
-        `      <bg_no __type="u16">1</bg_no>\n` +
-        `      <genre __type="u8">16</genre>\n` +
+        `      <bg_no __type="u16">0</bg_no>\n` +
+        `      <genre __type="u32">16</genre>\n` +
         `      <is_fixed __type="u8">1</is_fixed>\n` +
         `      <version __type="u8">7</version>\n` +
         `      <demo_pri __type="s8">0</demo_pri>\n` +
