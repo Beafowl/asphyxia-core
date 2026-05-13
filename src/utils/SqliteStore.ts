@@ -326,21 +326,23 @@ export class SqliteStore {
     // Add generated columns for the two most-queried JSON fields so SQL
     // can filter and join on them with an index instead of pulling every
     // row into JS. VIRTUAL means SQLite recomputes on read — no extra
-    // storage. ALTER TABLE ADD COLUMN is guarded by an existence check so
-    // this is safe to run on every open (new and existing databases alike).
-    const existingCols = new Set(
-      (this.db.prepare('PRAGMA table_info(documents)').all() as any[]).map((c: any) => c.name)
+    // storage. We swallow "duplicate column name" so re-opening an
+    // already-migrated DB is a no-op; the previous PRAGMA table_info
+    // check returned empty under node:sqlite's prepare/.all() so it kept
+    // re-running the ALTER and crashing on the second boot.
+    const addColumnIfMissing = (sql: string) => {
+      try {
+        this.db.exec(sql);
+      } catch (err: any) {
+        if (!/duplicate column/i.test(err?.message || '')) throw err;
+      }
+    };
+    addColumnIfMissing(
+      `ALTER TABLE documents ADD COLUMN _collection TEXT GENERATED ALWAYS AS (json_extract(data, '$.collection')) VIRTUAL`
     );
-    if (!existingCols.has('_collection')) {
-      this.db.exec(
-        `ALTER TABLE documents ADD COLUMN _collection TEXT GENERATED ALWAYS AS (json_extract(data, '$.collection')) VIRTUAL`
-      );
-    }
-    if (!existingCols.has('_mid')) {
-      this.db.exec(
-        `ALTER TABLE documents ADD COLUMN _mid INTEGER GENERATED ALWAYS AS (CAST(json_extract(data, '$.mid') AS INTEGER)) VIRTUAL`
-      );
-    }
+    addColumnIfMissing(
+      `ALTER TABLE documents ADD COLUMN _mid INTEGER GENERATED ALWAYS AS (CAST(json_extract(data, '$.mid') AS INTEGER)) VIRTUAL`
+    );
     // Indexes covering the hot query patterns:
     //   - collection alone  (hiscore scan, nautica list)
     //   - refid + collection (load_m: all scores for a player)
