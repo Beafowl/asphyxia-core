@@ -3897,6 +3897,7 @@ webui.get(
 
     const puppeteer = require('puppeteer-core');
     let browser: any = null;
+    let page: any = null;
     try {
       browser = await puppeteer.launch({
         executablePath: chromePath,
@@ -3908,7 +3909,7 @@ webui.get(
           '--hide-scrollbars',
         ],
       });
-      const page = await browser.newPage();
+      page = await browser.newPage();
       page.on('pageerror', (err: Error) =>
         Logger.error(`VF Top 50 page JS error: ${err.message}`)
       );
@@ -3956,6 +3957,13 @@ webui.get(
       res.send(png);
     } catch (err: any) {
       Logger.error(`VF Top 50 render failed for refid=${refid}: ${err.message || err}`);
+      Logger.error(`VF Top 50 chrome path used: ${chromePath}`);
+      if (page) {
+        try {
+          const html = await (page as any).content();
+          Logger.error(`VF Top 50 page HTML (first 2000 chars): ${String(html).slice(0, 2000)}`);
+        } catch {}
+      }
       if (!res.headersSent) {
         res.status(500).json({
           success: false,
