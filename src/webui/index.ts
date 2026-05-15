@@ -3909,6 +3909,12 @@ webui.get(
         ],
       });
       const page = await browser.newPage();
+      page.on('pageerror', (err: Error) =>
+        Logger.error(`VF Top 50 page JS error: ${err.message}`)
+      );
+      page.on('console', (msg: any) => {
+        if (msg.type() === 'error') Logger.error(`VF Top 50 console: ${msg.text()}`);
+      });
       await page.setViewport({ width: 1100, height: 1600, deviceScaleFactor: 1 });
       await page.setCookie({
         name: '_render_token',
