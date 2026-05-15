@@ -1,5 +1,6 @@
 import { Router, RequestHandler, Request } from 'express';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'fs';
+import os from 'os';
 import crypto from 'crypto';
 import session from 'express-session';
 import cookies from 'cookie-parser';
@@ -497,11 +498,17 @@ webui.use((req, res, next) => {
   const cookieToken = req.cookies && req.cookies._render_token;
   if (!cookieToken) return next();
 
-  // Loopback-only. req.ip can show as ::ffff:127.0.0.1 with IPv4-mapped
-  // IPv6, so cover both literals.
+  // Allow only connections from this machine's own addresses. Loopback is the
+  // common case; when the server is bound to a specific interface (e.g. a VPN
+  // IP) Puppeteer connects from that same IP, so we also accept any address
+  // assigned to a local network interface.
   const ip = req.ip || '';
-  const isLoopback = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
-  if (!isLoopback) return next();
+  const strippedIp = ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+  const localAddrs = new Set<string>(['127.0.0.1', '::1']);
+  for (const iface of Object.values(os.networkInterfaces())) {
+    for (const a of iface ?? []) localAddrs.add(a.address);
+  }
+  if (!localAddrs.has(strippedIp)) return next();
 
   const entry = internalRenderTokens.get(cookieToken);
   if (!entry || entry.expiresAt < Date.now()) return next();
@@ -3882,8 +3889,10 @@ webui.get(
     });
 
     const port = req.socket.localPort || CONFIG.port;
+    const rawLocalAddr = req.socket.localAddress || '127.0.0.1';
+    const localAddr = rawLocalAddr.startsWith('::ffff:') ? rawLocalAddr.slice(7) : rawLocalAddr;
     const targetUrl =
-      `http://127.0.0.1:${port}/plugin/sdvx@asphyxia/profile?refid=${encodeURIComponent(refid)}` +
+      `http://${localAddr}:${port}/plugin/sdvx@asphyxia/profile?refid=${encodeURIComponent(refid)}` +
       `&page=------vf_top_50&version=${version}`;
 
     const puppeteer = require('puppeteer-core');
@@ -3904,7 +3913,7 @@ webui.get(
       await page.setCookie({
         name: '_render_token',
         value: internalToken,
-        domain: '127.0.0.1',
+        domain: localAddr,
         path: '/',
         httpOnly: true,
       });
