@@ -3945,11 +3945,18 @@ webui.get(
         .catch(() => { /* fall through and screenshot whatever rendered */ });
       await page.evaluate(() => (document as any).fonts && (document as any).fonts.ready).catch(() => {});
 
-      const handle = await page.$('#vf_top50_canvas_root');
-      if (!handle) {
+      // Use page.evaluate + page.screenshot({ clip }) instead of page.$() to
+      // avoid Puppeteer's IsolatedWorld injection which requires Chrome 134+.
+      const clip = await page.evaluate(() => {
+        const el = document.querySelector('#vf_top50_canvas_root');
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { x: r.left, y: r.top, width: r.width, height: r.height };
+      });
+      if (!clip || clip.width === 0) {
         throw new Error('VF Top 50 canvas root not found in rendered page');
       }
-      const png = await handle.screenshot({ type: 'png' });
+      const png = await page.screenshot({ type: 'png', clip });
 
       res.set('Content-Type', 'image/png');
       res.set('Cache-Control', 'no-store');
