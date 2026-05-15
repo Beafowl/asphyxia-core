@@ -3958,6 +3958,8 @@ webui.get(
     } catch (err: any) {
       Logger.error(`VF Top 50 render failed for refid=${refid}: ${err.message || err}`);
       Logger.error(`VF Top 50 chrome path used: ${chromePath}`);
+      Logger.error(`VF Top 50 error stack: ${err.stack || '(no stack)'}`);
+      Logger.error(`VF Top 50 page is ${page ? 'set' : 'null'}`);
       if (page) {
         try {
           const html = await (page as any).content();
