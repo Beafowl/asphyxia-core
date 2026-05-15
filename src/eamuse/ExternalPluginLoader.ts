@@ -314,7 +314,16 @@ export function LoadExternalPlugins() {
         instances.push({ instance, name });
       } catch (err) {
         Logger.error(`Failed to load`, { plugin: name });
-        Logger.error(err);
+        if (err instanceof Error) {
+          Logger.error(`${err.name}: ${err.message}`, { plugin: name });
+          if (err.stack) Logger.error(err.stack, { plugin: name });
+        } else if (err !== null && err !== undefined) {
+          Logger.error(`Non-Error thrown: ${JSON.stringify(err)}`, { plugin: name });
+        } else {
+          Logger.error(`Thrown value was: ${String(err)}`, { plugin: name });
+          // Print to stderr directly in case the winston transport is suppressing it
+          process.stderr.write(`[${name}] plugin load threw: ${String(err)}\n`);
+        }
       }
     }
 
@@ -326,7 +335,12 @@ export function LoadExternalPlugins() {
         loaded.push(plugin);
       } catch (err) {
         Logger.error(`Failed during register()`, { plugin: name });
-        Logger.error(err, { plugin: name });
+        if (err instanceof Error) {
+          Logger.error(`${err.name}: ${err.message}`, { plugin: name });
+          if (err.stack) Logger.error(err.stack, { plugin: name });
+        } else {
+          Logger.error(`Non-Error thrown: ${String(err)}`, { plugin: name });
+        }
       }
     }
 
