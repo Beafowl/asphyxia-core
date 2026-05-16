@@ -3834,6 +3834,67 @@ function autoDetectChromePath(): string | null {
   return null;
 }
 
+// VF Top 50 JSON endpoint — returns the data the Discord bot needs to render
+// the image locally. Same auth rules as the PNG endpoint: owner or admin only.
+webui.get(
+  '/api/sdvx/vf-top-50/:refid',
+  wrap(async (req, res) => {
+    if (!req.session.user) return res.sendStatus(401);
+
+    const refid = req.params.refid;
+    if (!refid || refid.length < 8) {
+      return res.status(400).json({ success: false, error: 'invalid refid' });
+    }
+
+    const isAdmin = !!req.session.user.admin;
+    const isOwner = await userOwnsProfile(req, refid);
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({ success: false, error: 'forbidden' });
+    }
+
+    let version = parseInt(String(req.query.version ?? ''));
+    if (!Number.isFinite(version) || version < 1 || version > 7) version = 7;
+
+    const sdvxPlugin = { identifier: 'sdvx@asphyxia', core: false };
+    const profile = await APIFindOne(sdvxPlugin, refid, { collection: 'profile' }) as any;
+    const playerName: string = profile?.name ?? refid;
+
+    const records = (await APIFind(sdvxPlugin, refid, { collection: 'music', version })) as any[] ?? [];
+
+    // Deduplicate — keep best VF per (mid, type)
+    const best: Record<string, any> = {};
+    for (const r of records) {
+      const key = `${r.mid}_${r.type}`;
+      const vf = (r.volforce ?? 0) / 1000;
+      if (!best[key] || vf > best[key].vf) {
+        best[key] = {
+          mid: r.mid,
+          type: r.type,
+          score: r.score ?? 0,
+          grade: r.grade ?? 0,
+          clear: r.clear ?? 0,
+          vf,
+        };
+      }
+    }
+
+    const sorted = Object.values(best).sort((a: any, b: any) =>
+      b.vf !== a.vf ? b.vf - a.vf : b.score - a.score
+    );
+    const top50 = sorted.slice(0, 50);
+    const totalVf = top50.reduce((s: number, e: any) => s + e.vf, 0);
+
+    return res.json({
+      success: true,
+      refid,
+      playerName,
+      version,
+      totalVf: Math.round(totalVf * 1000) / 1000,
+      top50,
+    });
+  })
+);
+
 // VF Top 50 PNG renderer. Designed for a Discord bot or other automation:
 // the bot authenticates with an OAuth bearer token (the same token any
 // other API endpoint accepts — see the OAuth middleware at the top of
