@@ -43,7 +43,8 @@ ajax.post(
     const event = req.params.event;
 
     // Protect profile/score update events: only admin or profile owner
-    if ((event === 'updateProfile' || event === 'updateScore') && req.body.refid) {
+    const OWNER_OR_ADMIN_EVENTS = ['updateProfile', 'updateScore', 'clearCustomChartScores'];
+    if (OWNER_OR_ADMIN_EVENTS.includes(event) && req.body.refid) {
       const isAdmin = req.session.user && req.session.user.admin;
       const isOwner = await emitUserOwnsProfile(req, req.body.refid);
       if (!isAdmin && !isOwner) {
